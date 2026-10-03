@@ -38,7 +38,7 @@ try {
   await runChecked("incus", [...projectArgs, "stop", builder], { timeoutMs: 120_000 });
   await runChecked("incus", [
     ...projectArgs, "publish", builder, "--alias", config.INCUS_IMAGE,
-    "--property", "description=AgentSlave OpenCode worker image",
+    "description=AgentSlave OpenCode worker image",
   ], { timeoutMs: 900_000 });
   await runChecked("incus", [...projectArgs, "delete", builder], { timeoutMs: 120_000 });
   console.log(`Published Incus image alias ${config.INCUS_IMAGE}`);
