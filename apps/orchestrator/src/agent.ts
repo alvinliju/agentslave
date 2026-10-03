@@ -30,7 +30,6 @@ export type AgentRun = {
 };
 
 const authDirectory = "/root/.local/share/opencode";
-const authFile = `${authDirectory}/auth.json`;
 
 export class AgentRunner {
   constructor(private readonly config: AgentConfig) {}
@@ -42,9 +41,10 @@ export class AgentRunner {
   ): Promise<AgentRun> {
     if (!this.config.authPath) throw new Error("OPENCODE_AUTH_PATH is not configured");
     const auth = await readFile(this.config.authPath);
+    const credentialFile = `${authDirectory}/${this.config.authPath.endsWith(".db") ? "opencode.db" : "auth.json"}`;
     await checked(executor, workspace, ["mkdir", "-p", authDirectory]);
-    await checked(executor, workspace, ["tee", authFile], auth);
-    await checked(executor, workspace, ["chmod", "600", authFile]);
+    await checked(executor, workspace, ["tee", credentialFile], auth);
+    await checked(executor, workspace, ["chmod", "600", credentialFile]);
 
     try {
       const result = await executor.execResult(workspace.instanceName, [
@@ -72,7 +72,7 @@ export class AgentRunner {
         transcript,
       };
     } finally {
-      await executor.execResult(workspace.instanceName, ["rm", "-f", authFile])
+      await executor.execResult(workspace.instanceName, ["rm", "-f", credentialFile])
         .catch(() => undefined);
     }
   }

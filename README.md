@@ -77,9 +77,11 @@ the Nix store in `/var/lib/agentslave-secrets/agentslave.env`.
 
 The first provider is `xai/grok-4.7` through OpenCode. OpenCode supports xAI
 device-code OAuth for qualifying SuperGrok subscriptions, so normal runs do not
-require an xAI API key. Authenticate once with OpenCode, copy its generated
-`auth.json` to `/var/lib/agentslave-secrets/opencode-auth.json`, make it readable
-by the `agentslave` group, and set `OPENCODE_AUTH_PATH` to that file.
+require an xAI API key. Authenticate once with the pinned OpenCode CLI, export a
+credential-only copy of its current `opencode.db` to
+`/var/lib/agentslave-secrets/opencode.db`, make it readable by the `agentslave`
+group, and set `OPENCODE_AUTH_PATH` to that file. Legacy `auth.json` stores remain
+supported for older OpenCode releases.
 
 OpenCode is a pinned executable inside the worker image, not vendored source or
 an orchestration dependency. AgentSlave still owns workspace creation,

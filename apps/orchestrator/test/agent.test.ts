@@ -12,10 +12,10 @@ test("parses OpenCode JSON events while retaining plain output", () => {
   ]);
 });
 
-test("runs Grok through OpenCode and removes the copied credential", async () => {
+test("runs Grok through OpenCode with the current credential database", async () => {
   const directory = await mkdtemp(join(tmpdir(), "agentslave-agent-"));
-  const authPath = join(directory, "auth.json");
-  await writeFile(authPath, '{"xai":{"type":"oauth"}}');
+  const authPath = join(directory, "opencode.db");
+  await writeFile(authPath, "sqlite-credential-store");
   const commands: string[][] = [];
   const inputs: Array<string | Buffer | undefined> = [];
   const executor: WorkspaceExecutor = {
@@ -46,6 +46,6 @@ test("runs Grok through OpenCode and removes the copied credential", async () =>
   const opencode = commands.find((command) => command[0] === "opencode");
   assert.ok(opencode?.includes("xai/grok-4.7"));
   assert.equal(result.finalResponse, "Fixed the stale counter and ran npm test.");
-  assert.equal(String(inputs.find((input) => input instanceof Buffer)), '{"xai":{"type":"oauth"}}');
-  assert.deepEqual(commands.at(-1), ["rm", "-f", "/root/.local/share/opencode/auth.json"]);
+  assert.equal(String(inputs.find((input) => input instanceof Buffer)), "sqlite-credential-store");
+  assert.deepEqual(commands.at(-1), ["rm", "-f", "/root/.local/share/opencode/opencode.db"]);
 });
