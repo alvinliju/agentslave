@@ -135,6 +135,9 @@ in
       ];
     };
 
+    # The upstream NixOS Incus module requires the nftables firewall backend.
+    networking.nftables.enable = lib.mkDefault cfg.incus.enable;
+
     virtualisation.incus = lib.mkIf cfg.incus.enable {
       enable = true;
       preseed = {
