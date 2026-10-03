@@ -26,16 +26,15 @@ export class IncusWorkspaceManager {
 
   async ensureProject(): Promise<void> {
     const existing = await runCommand("incus", ["project", "show", this.config.project]);
-    if (existing.exitCode === 0) {
-      await runChecked("incus", [
-        "project", "set", this.config.project, "features.profiles=false",
-      ]);
-      return;
+    if (existing.exitCode !== 0) {
+      await runChecked("incus", ["project", "create", this.config.project]);
     }
-    await runChecked("incus", [
-      "project", "create", this.config.project,
-      "--config", "features.profiles=false",
+    const profile = await runChecked("incus", [
+      "--project", "default", "profile", "show", "default",
     ]);
+    await runChecked("incus", [
+      "--project", this.config.project, "profile", "edit", "default",
+    ], { input: profile.stdout });
   }
 
   async provision(jobId: string): Promise<IncusWorkspace> {

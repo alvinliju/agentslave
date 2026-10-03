@@ -71,16 +71,15 @@ try {
 
 async function ensureProject(): Promise<void> {
   const existing = await runCommand("incus", ["project", "show", config.INCUS_PROJECT]);
-  if (existing.exitCode === 0) {
-    await runChecked("incus", [
-      "project", "set", config.INCUS_PROJECT, "features.profiles=false",
-    ]);
-    return;
+  if (existing.exitCode !== 0) {
+    await runChecked("incus", ["project", "create", config.INCUS_PROJECT]);
   }
-  await runChecked("incus", [
-    "project", "create", config.INCUS_PROJECT,
-    "--config", "features.profiles=false",
+  const profile = await runChecked("incus", [
+    "--project", "default", "profile", "show", "default",
   ]);
+  await runChecked("incus", [
+    ...projectArgs, "profile", "edit", "default",
+  ], { input: profile.stdout });
 }
 
 async function waitForExec(): Promise<void> {
