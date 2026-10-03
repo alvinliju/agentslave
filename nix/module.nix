@@ -223,6 +223,7 @@ in
       '';
       serviceConfig = serviceHardening // {
         Type = "oneshot";
+        StateDirectory = "agentslave";
         TimeoutStartSec = "30min";
       };
     };
