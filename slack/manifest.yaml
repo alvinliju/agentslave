@@ -1,0 +1,24 @@
+display_information:
+  name: AgentSlave
+features:
+  bot_user:
+    display_name: AgentSlave
+    always_online: false
+  slash_commands:
+    - command: /agentslave
+      description: Configure AgentSlave for this workspace
+      usage_hint: configure https://github.com/owner/repository
+      should_escape: false
+oauth_config:
+  scopes:
+    bot:
+      - app_mentions:read
+      - chat:write
+      - files:read
+      - commands
+settings:
+  event_subscriptions:
+    bot_events:
+      - app_mention
+  socket_mode_enabled: true
+  token_rotation_enabled: false

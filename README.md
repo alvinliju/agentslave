@@ -43,6 +43,17 @@ curl -X POST http://127.0.0.1:7310/api/jobs \
   -d '{"title":"Cart count is stale","repository":"owner/repo","details":"Removing the final item leaves a count of 1"}'
 ```
 
+After installing the Slack and GitHub Apps, bind the workspace once with either:
+
+```text
+/agentslave configure https://github.com/owner/repository
+@AgentSlave configure https://github.com/owner/repository
+```
+
+AgentSlave verifies the GitHub App installation, discovers its installation ID
+and default branch, and uses that repository for later reports in the workspace.
+The Slack manifest is checked in at `slack/manifest.yaml`.
+
 Register a repository before dispatching work:
 
 ```bash

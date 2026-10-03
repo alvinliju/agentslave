@@ -179,6 +179,34 @@ export class Database {
     return result.rows[0] ? mapRepository(result.rows[0]) : null;
   }
 
+  async bindSlackRepository(teamId: string, repository: string, configuredBy?: string): Promise<void> {
+    await this.transaction(async (client) => {
+      await client.query(
+        `INSERT INTO slack_repository_bindings (team_id, repository, configured_by)
+         VALUES ($1, $2, $3)
+         ON CONFLICT (team_id) DO UPDATE SET
+           repository = EXCLUDED.repository,
+           configured_by = EXCLUDED.configured_by,
+           updated_at = now()`,
+        [teamId, repository, configuredBy ?? null],
+      );
+      await insertAudit(client, null, `slack:${configuredBy ?? "unknown"}`, "slack.repository_configured", {
+        teamId, repository,
+      });
+    });
+  }
+
+  async getSlackRepository(teamId: string): Promise<string | null> {
+    const result = await this.pool.query(
+      `SELECT binding.repository
+       FROM slack_repository_bindings binding
+       JOIN repositories repository ON repository.full_name = binding.repository
+       WHERE binding.team_id = $1 AND repository.enabled = true`,
+      [teamId],
+    );
+    return result.rows[0] ? String(result.rows[0].repository) : null;
+  }
+
   async addArtifact(input: {
     jobId: string; kind: string; sha256: string; storageBackend: string;
     storageLocation: string; byteSize: number; contentType: string; sourceUrl?: string;
@@ -242,7 +270,7 @@ async function insertEvent(
 
 async function insertAudit(
   client: PoolClient,
-  jobId: string,
+  jobId: string | null,
   actor: string,
   action: string,
   details: Record<string, unknown>,

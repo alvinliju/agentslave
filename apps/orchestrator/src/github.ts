@@ -18,6 +18,29 @@ export class GitHubAppClient {
     return this.app !== null;
   }
 
+  async discoverRepository(repository: string): Promise<{
+    fullName: string;
+    installationId: number;
+    defaultBranch: string;
+    verificationCommands: string[][];
+  }> {
+    const [owner, repo] = splitRepository(repository);
+    const app = this.requireApp();
+    const installation = await app.octokit.request(
+      "GET /repos/{owner}/{repo}/installation",
+      { owner, repo },
+    );
+    const installationId = installation.data.id;
+    const octokit = await app.getInstallationOctokit(installationId);
+    const details = await octokit.request("GET /repos/{owner}/{repo}", { owner, repo });
+    return {
+      fullName: details.data.full_name,
+      installationId,
+      defaultBranch: details.data.default_branch,
+      verificationCommands: [],
+    };
+  }
+
   async installationToken(installationId: number): Promise<string> {
     const app = this.requireApp();
     const response = await app.octokit.request(

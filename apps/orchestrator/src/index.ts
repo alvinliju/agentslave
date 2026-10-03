@@ -38,7 +38,7 @@ const slack = new SlackIntake({
   ...(config.SLACK_APP_TOKEN ? { appToken: config.SLACK_APP_TOKEN } : {}),
   ...(config.SLACK_SIGNING_SECRET ? { signingSecret: config.SLACK_SIGNING_SECRET } : {}),
   bugChannels: config.slackBugChannels,
-}, database, contentStore);
+}, database, contentStore, github);
 const worker = new Worker({
   database, github, workspaces, agent, contentStore,
   pollMs: config.WORKER_POLL_MS,
