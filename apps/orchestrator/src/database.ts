@@ -15,7 +15,7 @@ const transitions: Record<JobStatus, ReadonlySet<JobStatus>> = {
 };
 
 type JobPatch = Partial<Pick<Job,
-  "repository" | "openhandsConversationId" | "workspaceInstance" | "branchName" |
+  "repository" | "agentRunId" | "workspaceInstance" | "branchName" |
   "pullRequestUrl" | "failureReason"
 >>;
 
@@ -214,7 +214,7 @@ function buildJobUpdate(to: JobStatus, patch: JobPatch): { assignments: string[]
   const values: unknown[] = [to];
   const columns: Array<[keyof JobPatch, string]> = [
     ["repository", "repository"],
-    ["openhandsConversationId", "openhands_conversation_id"],
+    ["agentRunId", "agent_run_id"],
     ["workspaceInstance", "workspace_instance"],
     ["branchName", "branch_name"],
     ["pullRequestUrl", "pull_request_url"],
@@ -259,7 +259,7 @@ function mapJob(row: QueryResultRow): Job {
     repository: nullableString(row.repository), status: row.status as JobStatus,
     source: row.source as "slack" | "api", slackChannel: nullableString(row.slack_channel),
     slackThreadTs: nullableString(row.slack_thread_ts),
-    openhandsConversationId: nullableString(row.openhands_conversation_id),
+    agentRunId: nullableString(row.agent_run_id),
     workspaceInstance: nullableString(row.workspace_instance), branchName: nullableString(row.branch_name),
     pullRequestUrl: nullableString(row.pull_request_url), failureReason: nullableString(row.failure_reason),
     createdAt: new Date(row.created_at), updatedAt: new Date(row.updated_at),

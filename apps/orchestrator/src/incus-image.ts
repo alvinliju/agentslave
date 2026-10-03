@@ -6,25 +6,6 @@ import { runChecked, runCommand } from "./process.js";
 const projectArgs = ["--project", config.INCUS_PROJECT];
 const builder = `agentslave-image-${randomBytes(4).toString("hex")}`;
 
-const service = `[Unit]
-Description=OpenHands Agent Server for AgentSlave
-After=network-online.target
-Wants=network-online.target
-
-[Service]
-Type=simple
-Environment=DO_NOT_TRACK=1
-Environment=OH_TELEMETRY_EXPORTER=none
-Environment=OH_TELEMETRY_CONSENT=denied
-Environment=OH_SECRET_KEY=agentslave-development-image
-ExecStart=/root/.local/bin/agent-server --host 0.0.0.0 --port ${config.INCUS_AGENT_PORT}
-Restart=on-failure
-RestartSec=2
-
-[Install]
-WantedBy=multi-user.target
-`;
-
 const askpass = `#!/bin/sh
 case "$1" in
   *Username*) printf '%s\\n' 'x-access-token' ;;
@@ -48,19 +29,16 @@ try {
   await exec(["cloud-init", "status", "--wait"], 300_000);
   await exec(["apt-get", "update"], 300_000);
   await exec([
-    "apt-get", "install", "-y", "ca-certificates", "curl", "git", "pipx",
+    "apt-get", "install", "-y", "ca-certificates", "curl", "git", "nodejs", "npm",
     "python3", "python3-venv", "ripgrep", "tmux",
   ], 600_000);
-  await exec(["pipx", "install", "openhands-agent-server"], 900_000);
+  await exec(["npm", "install", "--global", "@opencode/cli@2.0.22"], 900_000);
   await push("/usr/local/bin/agentslave-git-askpass", askpass);
   await exec(["chmod", "755", "/usr/local/bin/agentslave-git-askpass"]);
-  await push("/etc/systemd/system/agentslave-openhands.service", service);
-  await exec(["systemctl", "daemon-reload"]);
-  await exec(["systemctl", "enable", "agentslave-openhands.service"]);
   await runChecked("incus", [...projectArgs, "stop", builder], { timeoutMs: 120_000 });
   await runChecked("incus", [
     ...projectArgs, "publish", builder, "--alias", config.INCUS_IMAGE,
-    "--property", "description=AgentSlave OpenHands worker image",
+    "--property", "description=AgentSlave OpenCode worker image",
   ], { timeoutMs: 900_000 });
   await runChecked("incus", [...projectArgs, "delete", builder], { timeoutMs: 120_000 });
   console.log(`Published Incus image alias ${config.INCUS_IMAGE}`);

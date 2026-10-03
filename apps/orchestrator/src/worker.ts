@@ -1,9 +1,9 @@
 import { ContentStore } from "@agentslave/object-store";
 import pino, { type Logger } from "pino";
+import type { AgentRunner } from "./agent.js";
 import type { Database } from "./database.js";
 import type { GitHubAppClient } from "./github.js";
 import type { IncusWorkspace, IncusWorkspaceManager } from "./incus.js";
-import type { OpenHandsClient } from "./openhands.js";
 import { buildFixPrompt } from "./prompt.js";
 import type { Job } from "./types.js";
 
@@ -11,7 +11,7 @@ export type WorkerDependencies = {
   database: Database;
   github: GitHubAppClient;
   workspaces: IncusWorkspaceManager;
-  openhands: OpenHandsClient;
+  agent: AgentRunner;
   contentStore: ContentStore;
   pollMs: number;
   logger?: Logger;
@@ -63,27 +63,29 @@ export class Worker {
       );
       let current = await this.dependencies.database.transition(
         job.id, "RUNNING", "workspace.ready",
-        { instance: workspace.instanceName, agentServerUrl: workspace.agentServerUrl },
+        { instance: workspace.instanceName },
         { workspaceInstance: workspace.instanceName, branchName },
       );
-      await this.notify(current, `Started OpenHands in Incus instance \`${workspace.instanceName}\`.`);
+      await this.notify(current, `Started the coding agent in Incus instance \`${workspace.instanceName}\`.`);
 
-      const run = await this.dependencies.openhands.run(
-        workspace.agentServerUrl, workspace.workingDirectory, buildFixPrompt(current),
+      const run = await this.dependencies.agent.run(
+        this.dependencies.workspaces, workspace, buildFixPrompt(current),
       );
       const transcript = await this.dependencies.contentStore.putJson({
         jobId: job.id,
-        conversationId: run.conversationId,
+        runId: run.runId,
         finalResponse: run.finalResponse,
-        accumulatedCost: run.accumulatedCost,
+        steps: run.steps,
+        totalTokens: run.totalTokens,
+        transcript: run.transcript,
       });
       await this.dependencies.database.addArtifact({
-        jobId: job.id, kind: "openhands.final", ...transcript,
+        jobId: job.id, kind: "agent.transcript", ...transcript,
       });
       current = await this.dependencies.database.transition(
         job.id, "VERIFYING", "agent.finished",
-        { conversationId: run.conversationId, accumulatedCost: run.accumulatedCost },
-        { openhandsConversationId: run.conversationId },
+        { runId: run.runId, steps: run.steps, totalTokens: run.totalTokens },
+        { agentRunId: run.runId },
       );
 
       const status = await this.dependencies.workspaces.execResult(

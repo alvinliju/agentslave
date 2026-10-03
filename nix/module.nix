@@ -81,7 +81,7 @@ in
       buildImage = lib.mkOption {
         type = lib.types.bool;
         default = true;
-        description = "Build the reusable OpenHands worker image when it is absent.";
+        description = "Build the reusable OpenCode worker image when it is absent.";
       };
       project = lib.mkOption {
         type = lib.types.str;
@@ -89,7 +89,7 @@ in
       };
       image = lib.mkOption {
         type = lib.types.str;
-        default = "agentslave-openhands";
+        default = "agentslave-worker";
       };
       cpu = lib.mkOption {
         type = lib.types.ints.positive;
@@ -200,7 +200,7 @@ in
     };
 
     systemd.services.agentslave-incus-image = lib.mkIf (cfg.incus.enable && cfg.incus.buildImage) {
-      description = "Build the AgentSlave OpenHands Incus image";
+      description = "Build the AgentSlave OpenCode Incus image";
       after = [
         "network-online.target"
         "incus.service"

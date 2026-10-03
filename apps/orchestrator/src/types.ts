@@ -15,7 +15,7 @@ export type Job = {
   source: "slack" | "api";
   slackChannel: string | null;
   slackThreadTs: string | null;
-  openhandsConversationId: string | null;
+  agentRunId: string | null;
   workspaceInstance: string | null;
   branchName: string | null;
   pullRequestUrl: string | null;

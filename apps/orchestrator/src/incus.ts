@@ -5,7 +5,6 @@ export type IncusConfig = {
   project: string;
   image: string;
   profile: string;
-  agentPort: number;
   cpu: number;
   memory: string;
   autoDelete: boolean;
@@ -14,7 +13,6 @@ export type IncusConfig = {
 export type IncusWorkspace = {
   instanceName: string;
   workingDirectory: "/workspace/repository";
-  agentServerUrl: string;
 };
 
 export class IncusWorkspaceManager {
@@ -47,10 +45,7 @@ export class IncusWorkspaceManager {
       "--config", `limits.memory=${this.config.memory}`,
     ]), { timeoutMs: 300_000 });
     await this.waitForExec(instanceName);
-    const ip = await this.instanceIp(instanceName);
-    const agentServerUrl = `http://${ip}:${this.config.agentPort}`;
-    await waitForHttp(`${agentServerUrl}/alive`, 180_000);
-    return { instanceName, workingDirectory: "/workspace/repository", agentServerUrl };
+    return { instanceName, workingDirectory: "/workspace/repository" };
   }
 
   async cloneRepository(
@@ -97,13 +92,17 @@ export class IncusWorkspaceManager {
   async execResult(
     instanceName: string,
     command: string[],
-    options: { cwd?: string; env?: string[]; timeoutMs?: number } = {},
+    options: { cwd?: string; env?: string[]; input?: string | Buffer; timeoutMs?: number } = {},
   ): Promise<CommandResult> {
     const args = ["exec", instanceName, "--disable-stdin"];
+    if (options.input !== undefined) args.splice(2, 1);
     if (options.cwd) args.push("--cwd", options.cwd);
     for (const value of options.env ?? []) args.push("--env", value);
     args.push("--", ...command);
-    return runCommand("incus", this.args(args), { timeoutMs: options.timeoutMs ?? 120_000 });
+    return runCommand("incus", this.args(args), {
+      ...(options.input !== undefined ? { input: options.input } : {}),
+      timeoutMs: options.timeoutMs ?? 120_000,
+    });
   }
 
   async commitAndPush(
@@ -166,25 +165,4 @@ export class IncusWorkspaceManager {
     throw new Error(`Incus instance ${instanceName} did not become ready`);
   }
 
-  private async instanceIp(instanceName: string): Promise<string> {
-    const result = await this.exec(instanceName, ["hostname", "-I"]);
-    const addresses = result.stdout.trim().split(/\s+/).filter(Boolean);
-    const ipv4 = addresses.find((address) => /^\d+\.\d+\.\d+\.\d+$/.test(address));
-    if (!ipv4) throw new Error(`No IPv4 address found for Incus instance ${instanceName}`);
-    return ipv4;
-  }
-}
-
-async function waitForHttp(url: string, timeoutMs: number): Promise<void> {
-  const started = Date.now();
-  while (Date.now() - started < timeoutMs) {
-    try {
-      const response = await fetch(url, { signal: AbortSignal.timeout(3_000) });
-      if (response.ok) return;
-    } catch {
-      // The service is still starting.
-    }
-    await delay(1_000);
-  }
-  throw new Error(`Timed out waiting for ${url}`);
 }
