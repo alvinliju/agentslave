@@ -45,6 +45,7 @@ test("runs Grok through OpenCode with the current credential database", async ()
 
   const opencode = commands.find((command) => command[0] === "opencode");
   assert.ok(opencode?.includes("xai/grok-4.7"));
+  assert.equal(opencode?.includes("--dir"), false);
   assert.equal(result.finalResponse, "Fixed the stale counter and ran npm test.");
   assert.equal(String(inputs.find((input) => input instanceof Buffer)), "sqlite-credential-store");
   assert.deepEqual(commands.at(-1), ["rm", "-f", "/root/.local/share/opencode/opencode.db"]);

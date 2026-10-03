@@ -53,7 +53,6 @@ export class AgentRunner {
         "--format", "json",
         "--auto",
         "--model", this.config.model,
-        "--dir", workspace.workingDirectory,
         prompt,
       ], {
         cwd: workspace.workingDirectory,
