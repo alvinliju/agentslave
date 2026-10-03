@@ -53,6 +53,28 @@ curl -X POST http://127.0.0.1:7310/api/repositories \
   -d '{"fullName":"owner/repo","installationId":123456,"defaultBranch":"main"}'
 ```
 
+## NixOS service
+
+The flake exports both an immutable application package and a reusable NixOS
+module. A host can pin the repository as a flake input, import
+`agentslave.nixosModules.default`, and enable the complete service boundary:
+
+```nix
+services.agentslave = {
+  enable = true;
+  incus = {
+    enable = true;
+    cpu = 2;
+    memory = "2GiB";
+  };
+};
+```
+
+The module declares the `agentslave` PostgreSQL role/database, migration unit,
+state directories, Incus bridge and storage pool, reusable OpenHands image
+builder, and the long-running orchestrator. Runtime credentials stay outside
+the Nix store in `/var/lib/agentslave-secrets/agentslave.env`.
+
 ## OpenHands
 
 The orchestrator uses the current OpenHands Agent Server REST contract rather

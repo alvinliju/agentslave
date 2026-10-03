@@ -22,3 +22,11 @@ check:
 
 build:
     npm run build
+
+# Build the immutable Nix package used by production.
+nix-build:
+    nix build
+
+# Validate the flake and its package metadata.
+nix-check:
+    nix flake check
