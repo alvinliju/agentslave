@@ -1,0 +1,34 @@
+{
+  "name": "@agentslave/orchestrator",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "build": "tsc -p tsconfig.json",
+    "dev": "tsx watch src/index.ts",
+    "start": "node dist/index.js",
+    "migrate": "tsx src/migrate.ts",
+    "incus:image": "tsx src/incus-image.ts",
+    "status": "tsx src/status.ts",
+    "test": "tsx --test test/*.test.ts",
+    "typecheck": "tsc -p tsconfig.json --noEmit"
+  },
+  "dependencies": {
+    "@agentslave/object-store": "*",
+    "@octokit/app": "^16.1.2",
+    "@octokit/rest": "^22.0.0",
+    "@slack/bolt": "^4.6.0",
+    "dotenv": "^17.2.3",
+    "express": "^5.1.0",
+    "pg": "^8.16.3",
+    "pino": "^9.9.5",
+    "zod": "^4.1.12"
+  },
+  "devDependencies": {
+    "@types/express": "^5.0.3",
+    "@types/node": "^22.15.32",
+    "@types/pg": "^8.15.5",
+    "tsx": "^4.20.6",
+    "typescript": "^5.9.3"
+  }
+}

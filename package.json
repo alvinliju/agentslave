@@ -1,0 +1,17 @@
+{
+  "name": "agentslave",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "workspaces": ["apps/*", "packages/*"],
+  "scripts": {
+    "build": "npm run build --workspaces --if-present",
+    "dev": "npm run dev --workspace @agentslave/orchestrator",
+    "migrate": "npm run migrate --workspace @agentslave/orchestrator",
+    "incus:image": "npm run incus:image --workspace @agentslave/orchestrator",
+    "test": "npm run test --workspaces --if-present",
+    "typecheck": "npm run typecheck --workspaces --if-present",
+    "status": "npm run status --workspace @agentslave/orchestrator"
+  },
+  "engines": { "node": ">=22" }
+}

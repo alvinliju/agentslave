@@ -1,0 +1,9 @@
+node_modules/
+dist/
+.env
+coverage/
+data/
+workspaces/
+*.log
+.DS_Store
+upstream/
