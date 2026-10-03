@@ -1,23 +1,21 @@
 # AgentSlave
 
 AgentSlave is a small Slack-to-pull-request orchestration service. It turns a
-threaded bug report into a tracked job, prepares a local workspace, dispatches
-an OpenHands conversation, records every transition in PostgreSQL, stores
+threaded bug report into a tracked job, prepares an isolated workspace, runs a
+subscription-backed coding agent, records every transition in PostgreSQL, stores
 attachments in a content-addressed object store, runs the coding agent inside
 an Incus system container, and opens a draft GitHub pull request for human
 review.
 
 This first draft uses one lightweight Incus container per run. It does not use
-Docker. The default image is a reusable `agentslave-openhands` image containing
-the OpenHands Agent Server and ordinary developer tools.
+Docker. The default image is a reusable `agentslave-worker` image containing
+OpenCode and ordinary developer tools, with Grok selected by default.
 
 ## Repository layout
 
 ```text
-apps/orchestrator/        Slack, GitHub, OpenHands, worker and status API
+apps/orchestrator/        Slack, GitHub, agent runner, worker and status API
 packages/object-store/    Aeomatic-derived SHA-256 immutable object store
-upstream/OpenHands/       Shallow clone of Agent Canvas (ignored by this repo)
-upstream/software-agent-sdk/  Shallow clone of the OpenHands SDK (ignored)
 ```
 
 ## First run
@@ -71,18 +69,25 @@ services.agentslave = {
 ```
 
 The module declares the `agentslave` PostgreSQL role/database, migration unit,
-state directories, Incus bridge and storage pool, reusable OpenHands image
+state directories, Incus bridge and storage pool, reusable OpenCode image
 builder, and the long-running orchestrator. Runtime credentials stay outside
 the Nix store in `/var/lib/agentslave-secrets/agentslave.env`.
 
-## OpenHands
+## Model access
 
-The orchestrator uses the current OpenHands Agent Server REST contract rather
-than importing the Python SDK into the TypeScript process. Each Incus instance
-runs its own server and exposes it only on the Incus bridge address. The cloned
-SDK under `upstream/software-agent-sdk` contains the upstream server and examples.
+The first provider is `xai/grok-4.7` through OpenCode. OpenCode supports xAI
+device-code OAuth for qualifying SuperGrok subscriptions, so normal runs do not
+require an xAI API key. Authenticate once with OpenCode, copy its generated
+`auth.json` to `/var/lib/agentslave-secrets/opencode-auth.json`, make it readable
+by the `agentslave` group, and set `OPENCODE_AUTH_PATH` to that file.
 
-The agent is instructed to edit and test the prepared working directory but not
+OpenCode is a pinned executable inside the worker image, not vendored source or
+an orchestration dependency. AgentSlave still owns workspace creation,
+verification, Git credentials, commits, draft pull requests, audit events, and
+Slack updates. Codex app-server can be added as a second subscription-backed
+runner behind the same small `AgentRunner` boundary.
+
+The coding agent is instructed to edit and test the prepared working directory but not
 to commit, push, or open a PR. AgentSlave owns those steps through the GitHub
 App after it sees a non-empty diff.
 

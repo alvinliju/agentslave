@@ -15,7 +15,7 @@ Deterministic intake supervisor
         |
         v
 READY -> worker lease -> Incus instance -> GitHub App checkout
-        |                                -> OpenHands Agent Server
+        |                                -> OpenCode CLI -> Grok
         |
         v
 local diff -> verification commands -> commit -> push -> draft PR
@@ -34,7 +34,7 @@ database stores their digest, location, type and relationship to a job.
 - `NEEDS_CONTEXT`: the supervisor needs a repository or usable description.
 - `READY`: safe to claim by a worker.
 - `PREPARING`: GitHub App checkout and job branch creation.
-- `RUNNING`: OpenHands is operating in the local workspace.
+- `RUNNING`: the selected coding model is operating in the local workspace.
 - `VERIFYING`: the agent finished and deterministic checks are running.
 - `PR_READY`: a draft pull request was opened.
 - `MERGED`: GitHub reported that a human merged the pull request.
@@ -46,8 +46,8 @@ history. State transitions update both in one database transaction.
 
 ## Replaceable boundaries
 
-- `OpenHandsClient`: current Agent Server HTTP adapter; later agents can share
-  the same `CodingAgent` interface.
+- `AgentRunner`: invokes the pinned OpenCode CLI with subscription-backed Grok;
+  Codex app-server can implement the same boundary later.
 - `GitHubAppClient`: owns installation tokens, checkout, push and draft PRs.
 - `ContentStore`: local Aeomatic-compatible CAS today; the same calls can target
   an HTTP CAS later.
