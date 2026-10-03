@@ -137,6 +137,7 @@ in
 
     # The upstream NixOS Incus module requires the nftables firewall backend.
     networking.nftables.enable = lib.mkDefault cfg.incus.enable;
+    networking.firewall.trustedInterfaces = lib.mkIf cfg.incus.enable [ "incusbr0" ];
 
     virtualisation.incus = lib.mkIf cfg.incus.enable {
       enable = true;
