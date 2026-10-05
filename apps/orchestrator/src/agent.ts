@@ -23,6 +23,8 @@ export type WorkspaceExecutor = {
 
 export type AgentRun = {
   runId: string;
+  exitCode: number;
+  exitDetail: string | null;
   finalResponse: string;
   steps: number;
   totalTokens: number;
@@ -62,12 +64,11 @@ export class AgentRunner {
         env: ["OPENCODE_DISABLE_AUTOUPDATE=true", "HOME=/root"],
         timeoutMs: this.config.timeoutMs,
       });
-      if (result.exitCode !== 0) {
-        throw new Error(`OpenCode failed with ${result.exitCode}: ${(result.stderr || result.stdout).slice(0, 2_000)}`);
-      }
       const transcript = parseJsonLines(result.stdout);
       return {
         runId: randomUUID(),
+        exitCode: result.exitCode,
+        exitDetail: result.exitCode === 0 ? null : commandFailureDetail(result),
         finalResponse: finalText(transcript, result.stdout),
         steps: transcript.length,
         totalTokens: tokenCount(transcript),
@@ -78,6 +79,19 @@ export class AgentRunner {
         .catch(() => undefined);
     }
   }
+}
+
+export function commandFailureDetail(result: CommandResult, limit = 2_000): string {
+  const output = result.stderr.trim() || result.stdout.trim() || "no output";
+  return output.length <= limit ? output : output.slice(-limit);
+}
+
+export function reportedBlocker(finalResponse: string): string | null {
+  const results = [...finalResponse.matchAll(/^RESULT:\s*(READY_FOR_REVIEW|BLOCKED)\s*$/gim)];
+  if (results.at(-1)?.[1]?.toUpperCase() !== "BLOCKED") return null;
+  const blocker = finalResponse.match(/^BLOCKER:\s*(.+)$/im)?.[1]?.trim();
+  if (blocker && blocker.toLowerCase() !== "none") return blocker;
+  return finalResponse.match(/^SUMMARY:\s*(.+)$/im)?.[1]?.trim() || "The agent did not produce a reviewable change.";
 }
 
 async function checked(
