@@ -174,7 +174,7 @@ export class Database {
          updated_at = now()
        RETURNING *`,
       [repository.fullName, repository.installationId, repository.defaultBranch,
-        repository.verificationCommands],
+        JSON.stringify(repository.verificationCommands)],
     );
     return mapRepository(requireRow(result.rows));
   }
@@ -319,7 +319,15 @@ function mapArtifact(row: QueryResultRow): Artifact {
 
 function mapRepository(row: QueryResultRow): RepositoryRegistration {
   return { fullName: String(row.full_name), installationId: Number(row.installation_id),
-    defaultBranch: String(row.default_branch), verificationCommands: row.verification_commands as string[][] };
+    defaultBranch: String(row.default_branch),
+    verificationCommands: normalizeVerificationCommands(row.verification_commands) };
+}
+
+export function normalizeVerificationCommands(value: unknown): string[][] {
+  if (!Array.isArray(value)) return [];
+  return value.filter(
+    (command): command is string[] => Array.isArray(command) && command.every((part) => typeof part === "string"),
+  );
 }
 
 function nullableString(value: unknown): string | null {
