@@ -1,12 +1,12 @@
 import "dotenv/config";
 import { ContentStore } from "@agentslave/object-store";
 import pino from "pino";
+import { AgentRunner } from "./agent.js";
 import { config } from "./config.js";
 import { Database } from "./database.js";
 import { GitHubAppClient } from "./github.js";
 import { createHttpApp } from "./http.js";
 import { IncusWorkspaceManager } from "./incus.js";
-import { OpenHandsClient } from "./openhands.js";
 import { SlackIntake } from "./slack.js";
 import { Worker } from "./worker.js";
 
@@ -24,25 +24,23 @@ const workspaces = new IncusWorkspaceManager({
   project: config.INCUS_PROJECT,
   image: config.INCUS_IMAGE,
   profile: config.INCUS_PROFILE,
-  agentPort: config.INCUS_AGENT_PORT,
   cpu: config.INCUS_CPU,
   memory: config.INCUS_MEMORY,
   autoDelete: config.INCUS_AUTO_DELETE,
 });
-const openhands = new OpenHandsClient({
-  ...(config.OPENHANDS_API_KEY ? { apiKey: config.OPENHANDS_API_KEY } : {}),
-  model: config.OPENHANDS_LLM_MODEL,
-  ...(config.OPENHANDS_LLM_API_KEY ? { llmApiKey: config.OPENHANDS_LLM_API_KEY } : {}),
-  ...(config.OPENHANDS_LLM_BASE_URL ? { llmBaseUrl: config.OPENHANDS_LLM_BASE_URL } : {}),
+const agent = new AgentRunner({
+  model: config.AGENT_MODEL,
+  ...(config.OPENCODE_AUTH_PATH ? { authPath: config.OPENCODE_AUTH_PATH } : {}),
+  timeoutMs: config.AGENT_TIMEOUT_MS,
 });
 const slack = new SlackIntake({
   ...(config.SLACK_BOT_TOKEN ? { botToken: config.SLACK_BOT_TOKEN } : {}),
   ...(config.SLACK_APP_TOKEN ? { appToken: config.SLACK_APP_TOKEN } : {}),
   ...(config.SLACK_SIGNING_SECRET ? { signingSecret: config.SLACK_SIGNING_SECRET } : {}),
   bugChannels: config.slackBugChannels,
-}, database, contentStore);
+}, database, contentStore, github);
 const worker = new Worker({
-  database, github, workspaces, openhands, contentStore,
+  database, github, workspaces, agent, contentStore,
   pollMs: config.WORKER_POLL_MS,
   logger,
   notify: (job, message) => slack.notify(job, message),

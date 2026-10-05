@@ -1,5 +1,5 @@
 import pg, { type PoolClient, type QueryResultRow } from "pg";
-import type { Intake, Job, JobEvent, JobStatus, RepositoryRegistration } from "./types.js";
+import type { Artifact, Intake, Job, JobEvent, JobStatus, RepositoryRegistration } from "./types.js";
 
 const transitions: Record<JobStatus, ReadonlySet<JobStatus>> = {
   RECEIVED: new Set(["NEEDS_CONTEXT", "READY", "FAILED", "CANCELLED"]),
@@ -15,7 +15,7 @@ const transitions: Record<JobStatus, ReadonlySet<JobStatus>> = {
 };
 
 type JobPatch = Partial<Pick<Job,
-  "repository" | "openhandsConversationId" | "workspaceInstance" | "branchName" |
+  "repository" | "agentRunId" | "workspaceInstance" | "branchName" |
   "pullRequestUrl" | "failureReason"
 >>;
 
@@ -85,6 +85,14 @@ export class Database {
       [jobId],
     );
     return result.rows.map(mapEvent);
+  }
+
+  async listArtifacts(jobId: string): Promise<Artifact[]> {
+    const result = await this.pool.query(
+      "SELECT * FROM artifacts WHERE job_id = $1 ORDER BY created_at ASC, id ASC",
+      [jobId],
+    );
+    return result.rows.map(mapArtifact);
   }
 
   async appendEvent(jobId: string, kind: string, payload: Record<string, unknown>): Promise<void> {
@@ -166,7 +174,7 @@ export class Database {
          updated_at = now()
        RETURNING *`,
       [repository.fullName, repository.installationId, repository.defaultBranch,
-        repository.verificationCommands],
+        JSON.stringify(repository.verificationCommands)],
     );
     return mapRepository(requireRow(result.rows));
   }
@@ -177,6 +185,34 @@ export class Database {
       [fullName],
     );
     return result.rows[0] ? mapRepository(result.rows[0]) : null;
+  }
+
+  async bindSlackRepository(teamId: string, repository: string, configuredBy?: string): Promise<void> {
+    await this.transaction(async (client) => {
+      await client.query(
+        `INSERT INTO slack_repository_bindings (team_id, repository, configured_by)
+         VALUES ($1, $2, $3)
+         ON CONFLICT (team_id) DO UPDATE SET
+           repository = EXCLUDED.repository,
+           configured_by = EXCLUDED.configured_by,
+           updated_at = now()`,
+        [teamId, repository, configuredBy ?? null],
+      );
+      await insertAudit(client, null, `slack:${configuredBy ?? "unknown"}`, "slack.repository_configured", {
+        teamId, repository,
+      });
+    });
+  }
+
+  async getSlackRepository(teamId: string): Promise<string | null> {
+    const result = await this.pool.query(
+      `SELECT binding.repository
+       FROM slack_repository_bindings binding
+       JOIN repositories repository ON repository.full_name = binding.repository
+       WHERE binding.team_id = $1 AND repository.enabled = true`,
+      [teamId],
+    );
+    return result.rows[0] ? String(result.rows[0].repository) : null;
   }
 
   async addArtifact(input: {
@@ -214,7 +250,7 @@ function buildJobUpdate(to: JobStatus, patch: JobPatch): { assignments: string[]
   const values: unknown[] = [to];
   const columns: Array<[keyof JobPatch, string]> = [
     ["repository", "repository"],
-    ["openhandsConversationId", "openhands_conversation_id"],
+    ["agentRunId", "agent_run_id"],
     ["workspaceInstance", "workspace_instance"],
     ["branchName", "branch_name"],
     ["pullRequestUrl", "pull_request_url"],
@@ -242,7 +278,7 @@ async function insertEvent(
 
 async function insertAudit(
   client: PoolClient,
-  jobId: string,
+  jobId: string | null,
   actor: string,
   action: string,
   details: Record<string, unknown>,
@@ -259,7 +295,7 @@ function mapJob(row: QueryResultRow): Job {
     repository: nullableString(row.repository), status: row.status as JobStatus,
     source: row.source as "slack" | "api", slackChannel: nullableString(row.slack_channel),
     slackThreadTs: nullableString(row.slack_thread_ts),
-    openhandsConversationId: nullableString(row.openhands_conversation_id),
+    agentRunId: nullableString(row.agent_run_id),
     workspaceInstance: nullableString(row.workspace_instance), branchName: nullableString(row.branch_name),
     pullRequestUrl: nullableString(row.pull_request_url), failureReason: nullableString(row.failure_reason),
     createdAt: new Date(row.created_at), updatedAt: new Date(row.updated_at),
@@ -271,9 +307,27 @@ function mapEvent(row: QueryResultRow): JobEvent {
     payload: row.payload as Record<string, unknown>, createdAt: new Date(row.created_at) };
 }
 
+function mapArtifact(row: QueryResultRow): Artifact {
+  return {
+    id: String(row.id), jobId: String(row.job_id), kind: String(row.kind),
+    sha256: String(row.sha256), storageBackend: String(row.storage_backend),
+    storageLocation: String(row.storage_location), byteSize: Number(row.byte_size),
+    contentType: String(row.content_type), sourceUrl: nullableString(row.source_url),
+    createdAt: new Date(row.created_at),
+  };
+}
+
 function mapRepository(row: QueryResultRow): RepositoryRegistration {
   return { fullName: String(row.full_name), installationId: Number(row.installation_id),
-    defaultBranch: String(row.default_branch), verificationCommands: row.verification_commands as string[][] };
+    defaultBranch: String(row.default_branch),
+    verificationCommands: normalizeVerificationCommands(row.verification_commands) };
+}
+
+export function normalizeVerificationCommands(value: unknown): string[][] {
+  if (!Array.isArray(value)) return [];
+  return value.filter(
+    (command): command is string[] => Array.isArray(command) && command.every((part) => typeof part === "string"),
+  );
 }
 
 function nullableString(value: unknown): string | null {

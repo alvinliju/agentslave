@@ -1,16 +1,41 @@
 import "dotenv/config";
-import { readFile } from "node:fs/promises";
+import { readdir, readFile } from "node:fs/promises";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import pg from "pg";
 import { config } from "./config.js";
 
-const migrationPath = join(dirname(fileURLToPath(import.meta.url)), "../migrations/001_initial.sql");
-const sql = await readFile(migrationPath, "utf8");
+const migrationDirectory = join(dirname(fileURLToPath(import.meta.url)), "../migrations");
 const pool = new pg.Pool({ connectionString: config.DATABASE_URL });
 try {
-  await pool.query(sql);
-  console.log("Applied 001_initial.sql");
+  await pool.query(`CREATE TABLE IF NOT EXISTS schema_migrations (
+    filename text PRIMARY KEY,
+    applied_at timestamptz NOT NULL DEFAULT now()
+  )`);
+  const files = (await readdir(migrationDirectory))
+    .filter((filename) => /^\d+_.+\.sql$/.test(filename))
+    .sort();
+  for (const filename of files) {
+    const exists = await pool.query(
+      "SELECT 1 FROM schema_migrations WHERE filename = $1",
+      [filename],
+    );
+    if (exists.rowCount) continue;
+    const sql = await readFile(join(migrationDirectory, filename), "utf8");
+    const client = await pool.connect();
+    try {
+      await client.query("BEGIN");
+      await client.query(sql);
+      await client.query("INSERT INTO schema_migrations (filename) VALUES ($1)", [filename]);
+      await client.query("COMMIT");
+      console.log(`Applied ${filename}`);
+    } catch (error) {
+      await client.query("ROLLBACK");
+      throw error;
+    } finally {
+      client.release();
+    }
+  }
 } finally {
   await pool.end();
 }

@@ -15,7 +15,7 @@ export type Job = {
   source: "slack" | "api";
   slackChannel: string | null;
   slackThreadTs: string | null;
-  openhandsConversationId: string | null;
+  agentRunId: string | null;
   workspaceInstance: string | null;
   branchName: string | null;
   pullRequestUrl: string | null;
@@ -29,6 +29,19 @@ export type JobEvent = {
   jobId: string;
   kind: string;
   payload: Record<string, unknown>;
+  createdAt: Date;
+};
+
+export type Artifact = {
+  id: string;
+  jobId: string;
+  kind: string;
+  sha256: string;
+  storageBackend: string;
+  storageLocation: string;
+  byteSize: number;
+  contentType: string;
+  sourceUrl: string | null;
   createdAt: Date;
 };
 
