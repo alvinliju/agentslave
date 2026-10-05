@@ -34,7 +34,7 @@ buildNpmPackage {
 
     app="$out/lib/agentslave"
     mkdir -p "$app" "$out/bin"
-    cp -r apps packages node_modules package.json package-lock.json "$app/"
+    cp -r apps packages node_modules package.json package-lock.json HARNESS.md "$app/"
 
     makeWrapper ${nodejs_22}/bin/node "$out/bin/agentslave" \
       --add-flags "$app/apps/orchestrator/dist/index.js"

@@ -1,9 +1,12 @@
 import type { Job } from "./types.js";
+import type { Harness, LoopSpec } from "./harness.js";
 
 export function buildFixPrompt(
   job: Job,
   evidenceFiles: string[] = [],
   verificationCommands: string[][] = [],
+  loopSpec?: LoopSpec,
+  harness?: Harness,
 ): string {
   return `You are fixing one reported bug in an isolated development workspace.
 
@@ -20,6 +23,14 @@ Inspect every attached screenshot before deciding what is broken. Treat the visu
 AgentSlave has already retrieved the reported artifacts from object storage and staged them locally. Their manifest is at \`/workspace/.agentslave/evidence.json\`. The only approved visual evidence is attached to this run: ${evidenceFiles.length > 0 ? evidenceFiles.join(", ") : "none"}.
 
 Use attached screenshots to understand the report. Do not use visual/image-reading tools on downloaded, generated, cached, or temporary image files (including favicons, icons, and anything under /tmp). Tiny icon files can be rejected by the model provider. For those files, use metadata-only inspection such as \`file\`, \`identify\`, or Python/PIL size and format checks. Do not fetch the object store directly; ask AgentSlave through your final BLOCKER if additional evidence is required.
+
+## Compiled loop spec
+
+${loopSpec ? formatLoopSpec(loopSpec) : "No supervisor spec was available; compile a focused acceptance condition before editing."}
+
+## Harness contract (version ${harness?.version ?? "default"})
+
+${harness?.instructions ?? "Use deterministic verification as the authority for completion."}
 
 Required workflow:
 1. Inspect the repository and its contributor instructions. Do not spend more than 2 minutes or 6 exploration commands before moving to a deterministic reproduction.
@@ -45,8 +56,37 @@ Use READY_FOR_REVIEW only when the working tree contains the intended fix and it
 Do not commit, push, open a pull request, access production, or rewrite unrelated code. The orchestrator owns Git and GitHub operations.`;
 }
 
-export function buildImageInputRecoveryPrompt(job: Job, evidenceFiles: string[], verificationCommands: string[][] = []): string {
-  return `${buildFixPrompt(job, evidenceFiles, verificationCommands)}
+export function buildLoopSpecPrompt(job: Job, harness: Harness, verificationCommands: string[][]): string {
+  return `You are the supervisor in a coding harness. Do not edit files, run tests, commit, push, or open a pull request. Convert this task into a narrow, testable implementation contract for another agent.
+
+Bug or feature request: ${job.title}
+
+Details:
+${job.details}
+
+Harness contract (version ${harness.version}):
+${harness.instructions}
+
+Repository verification that will be enforced:
+${verificationCommands.map((command) => `- ${command.join(" ")}`).join("\n") || "- none"}
+
+Return exactly one block in this shape:
+LOOP_SPEC:
+\`\`\`json
+{"objective":"...","reproduction":"...","acceptance":["..."],"focusedTests":["..."],"boundary":"..."}
+\`\`\`
+
+Make acceptance conditions observable. Be concise. If the report is ambiguous, state the smallest safe interpretation rather than inventing product behavior.`;
+}
+
+export function buildImageInputRecoveryPrompt(
+  job: Job,
+  evidenceFiles: string[],
+  verificationCommands: string[][] = [],
+  loopSpec?: LoopSpec,
+  harness?: Harness,
+): string {
+  return `${buildFixPrompt(job, evidenceFiles, verificationCommands, loopSpec, harness)}
 
 Recovery instruction: a previous attempt stopped because a temporary tiny image was sent to the model provider. Continue from the existing working tree. Do not inspect any non-attached image with a visual/image-reading tool. Use metadata-only commands for favicon files, then implement and verify the smallest safe fix.`;
 }
@@ -58,8 +98,10 @@ export function buildRepairPrompt(
   failureOutput: string,
   attempt: number,
   verificationCommands: string[][] = [],
+  loopSpec?: LoopSpec,
+  harness?: Harness,
 ): string {
-  return `${buildFixPrompt(job, evidenceFiles, verificationCommands)}
+  return `${buildFixPrompt(job, evidenceFiles, verificationCommands, loopSpec, harness)}
 
 This is repair attempt ${attempt}. The original bug report and acceptance condition still apply. A previous implementation exists in the working tree, but independent verification failed.
 
@@ -72,4 +114,14 @@ ${failureOutput.slice(-4_000)}
 \`\`\`
 
 Do not restart broad research. Diagnose this failure, make the smallest correction, and run the failed command plus any focused acceptance test before returning READY_FOR_REVIEW.`;
+}
+
+function formatLoopSpec(spec: LoopSpec): string {
+  return `Objective: ${spec.objective}
+Reproduction: ${spec.reproduction}
+Acceptance:
+${spec.acceptance.map((item) => `- ${item}`).join("\n")}
+Focused tests:
+${spec.focusedTests.map((item) => `- ${item}`).join("\n")}
+Boundary: ${spec.boundary}`;
 }

@@ -43,6 +43,7 @@ export class AgentRunner {
     prompt: string,
     files: string[] = [],
     timeoutMs = this.config.timeoutMs,
+    model = this.config.model,
   ): Promise<AgentRun> {
     if (!this.config.authPath) throw new Error("OPENCODE_AUTH_PATH is not configured");
     const auth = await readFile(this.config.authPath);
@@ -57,7 +58,7 @@ export class AgentRunner {
         "--standalone",
         "--format", "json",
         "--auto",
-        "--model", this.config.model,
+        "--model", model,
       ];
       for (const file of files) command.push("--file", file);
       command.push(prompt);

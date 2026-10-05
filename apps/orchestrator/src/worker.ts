@@ -10,7 +10,8 @@ import {
 import type { Database } from "./database.js";
 import type { GitHubAppClient } from "./github.js";
 import type { IncusWorkspace, IncusWorkspaceManager } from "./incus.js";
-import { buildFixPrompt, buildImageInputRecoveryPrompt, buildRepairPrompt } from "./prompt.js";
+import { fallbackLoopSpec, parseLoopSpec, type Harness } from "./harness.js";
+import { buildFixPrompt, buildImageInputRecoveryPrompt, buildLoopSpecPrompt, buildRepairPrompt } from "./prompt.js";
 import type { Job } from "./types.js";
 
 export type WorkerDependencies = {
@@ -21,6 +22,9 @@ export type WorkerDependencies = {
   contentStore: ContentStore;
   pollMs: number;
   maxAgentAttempts: number;
+  supervisorModel: string;
+  executorModel: string;
+  harness: Harness;
   logger?: Logger;
   notify?: (job: Job, message: string) => Promise<void>;
 };
@@ -79,9 +83,30 @@ export class Worker {
       await this.notify(current, `Started the coding agent in Incus instance \`${workspace.instanceName}\`.`);
 
       const attachedFiles = await this.prepareImageAttachments(job.id, workspace);
+      const supervisor = await this.dependencies.agent.run(
+        this.dependencies.workspaces,
+        workspace,
+        buildLoopSpecPrompt(current, this.dependencies.harness, repository.verificationCommands),
+        [],
+        10 * 60_000,
+        this.dependencies.supervisorModel,
+      );
+      await this.persistAgentRun(job.id, supervisor, 0, "supervisor");
+      const loopSpec = supervisor.timedOut
+        ? fallbackLoopSpec(current)
+        : parseLoopSpec(supervisor.finalResponse, current);
+      await this.dependencies.database.appendEvent(job.id, "harness.loop_spec_compiled", {
+        harnessVersion: this.dependencies.harness.version,
+        supervisorModel: this.dependencies.supervisorModel,
+        fallback: supervisor.timedOut || !/LOOP_SPEC:\s*```json/i.test(supervisor.finalResponse),
+        loopSpec,
+      });
       let run = await this.dependencies.agent.run(
         this.dependencies.workspaces, workspace,
-        buildFixPrompt(current, attachedFiles, repository.verificationCommands), attachedFiles,
+        buildFixPrompt(current, attachedFiles, repository.verificationCommands, loopSpec, this.dependencies.harness),
+        attachedFiles,
+        undefined,
+        this.dependencies.executorModel,
       );
       await this.persistAgentRun(job.id, run, 1);
       if (isRecoverableImageInputError(run.exitDetail)) {
@@ -91,7 +116,12 @@ export class Worker {
         });
         run = await this.dependencies.agent.run(
           this.dependencies.workspaces, workspace,
-          buildImageInputRecoveryPrompt(current, attachedFiles, repository.verificationCommands), attachedFiles,
+          buildImageInputRecoveryPrompt(
+            current, attachedFiles, repository.verificationCommands, loopSpec, this.dependencies.harness,
+          ),
+          attachedFiles,
+          undefined,
+          this.dependencies.executorModel,
         );
         await this.persistAgentRun(job.id, run, 2);
       }
@@ -128,9 +158,11 @@ export class Worker {
           workspace,
           buildRepairPrompt(
             current, attachedFiles, verification.command, verification.output,
-            agentAttempts, repository.verificationCommands,
+            agentAttempts, repository.verificationCommands, loopSpec, this.dependencies.harness,
           ),
           attachedFiles,
+          undefined,
+          this.dependencies.executorModel,
         );
         await this.persistAgentRun(job.id, run, agentAttempts);
         if (run.timedOut) {
@@ -184,7 +216,12 @@ export class Worker {
     }
   }
 
-  private async persistAgentRun(jobId: string, run: AgentRun, attempt: number): Promise<void> {
+  private async persistAgentRun(
+    jobId: string,
+    run: AgentRun,
+    attempt: number,
+    role: "supervisor" | "executor" = "executor",
+  ): Promise<void> {
     const transcript = await this.dependencies.contentStore.putJson({
       jobId,
       runId: run.runId,
@@ -198,9 +235,9 @@ export class Worker {
       timedOut: run.timedOut,
     });
     await this.dependencies.database.addArtifact({
-      jobId, kind: "agent.transcript", ...transcript,
+      jobId, kind: `agent.${role}.transcript`, ...transcript,
     });
-    await this.dependencies.database.appendEvent(jobId, "agent.run_recorded", {
+    await this.dependencies.database.appendEvent(jobId, `agent.${role}_recorded`, {
       attempt,
       runId: run.runId,
       exitCode: run.exitCode,

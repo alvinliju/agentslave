@@ -26,6 +26,8 @@ const schema = z.object({
   GITHUB_APP_PRIVATE_KEY: optionalText,
   GITHUB_WEBHOOK_SECRET: optionalText,
   AGENT_MODEL: z.string().default("xai/grok-4.7"),
+  AGENT_SUPERVISOR_MODEL: optionalText,
+  AGENT_EXECUTOR_MODEL: optionalText,
   OPENCODE_AUTH_PATH: optionalText,
   AGENT_TIMEOUT_MS: z.coerce.number().int().min(60_000).default(45 * 60_000),
   AGENT_MAX_ATTEMPTS: z.coerce.number().int().min(1).max(5).default(2),
@@ -37,6 +39,8 @@ const parsed = schema.parse(process.env);
 
 export const config = {
   ...parsed,
+  agentSupervisorModel: parsed.AGENT_SUPERVISOR_MODEL ?? parsed.AGENT_MODEL,
+  agentExecutorModel: parsed.AGENT_EXECUTOR_MODEL ?? parsed.AGENT_MODEL,
   objectStoreRoot: resolve(parsed.OBJECT_STORE_ROOT),
   slackBugChannels: new Set(parsed.SLACK_BUG_CHANNELS.split(",").map((value) => value.trim()).filter(Boolean)),
 };

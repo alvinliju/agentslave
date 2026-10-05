@@ -7,6 +7,7 @@ import { Database } from "./database.js";
 import { GitHubAppClient } from "./github.js";
 import { createHttpApp } from "./http.js";
 import { IncusWorkspaceManager } from "./incus.js";
+import { loadHarness } from "./harness.js";
 import { SlackIntake } from "./slack.js";
 import { Worker } from "./worker.js";
 
@@ -16,6 +17,8 @@ const contentStore = new ContentStore({
   root: config.objectStoreRoot,
   ...(config.OBJECT_STORE_BASE_URL ? { baseUrl: config.OBJECT_STORE_BASE_URL } : {}),
 });
+const harnessPath = process.env.HARNESS_PATH ?? new URL("../../../HARNESS.md", import.meta.url).pathname;
+const harness = await loadHarness(harnessPath);
 const github = new GitHubAppClient({
   ...(config.GITHUB_APP_ID ? { appId: config.GITHUB_APP_ID } : {}),
   ...(config.GITHUB_APP_PRIVATE_KEY ? { privateKey: config.GITHUB_APP_PRIVATE_KEY } : {}),
@@ -43,6 +46,9 @@ const worker = new Worker({
   database, github, workspaces, agent, contentStore,
   pollMs: config.WORKER_POLL_MS,
   maxAgentAttempts: config.AGENT_MAX_ATTEMPTS,
+  supervisorModel: config.agentSupervisorModel,
+  executorModel: config.agentExecutorModel,
+  harness,
   logger,
   notify: (job, message) => slack.notify(job, message),
 });

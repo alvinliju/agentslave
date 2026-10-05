@@ -22,6 +22,7 @@ let
     INCUS_CPU = toString cfg.incus.cpu;
     INCUS_MEMORY = cfg.incus.memory;
     AGENT_MAX_ATTEMPTS = toString cfg.agent.maxAttempts;
+    HARNESS_PATH = "${cfg.package}/lib/agentslave/HARNESS.md";
   };
   serviceHardening = {
     User = "agentslave";
