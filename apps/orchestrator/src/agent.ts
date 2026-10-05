@@ -82,8 +82,16 @@ export class AgentRunner {
 }
 
 export function commandFailureDetail(result: CommandResult, limit = 2_000): string {
+  const structuredError = parseJsonLines(result.stdout).reverse()
+    .map(extractErrorMessage)
+    .find((message): message is string => Boolean(message));
+  if (structuredError) return structuredError;
   const output = result.stderr.trim() || result.stdout.trim() || "no output";
   return output.length <= limit ? output : output.slice(-limit);
+}
+
+export function isRecoverableImageInputError(detail: string | null): boolean {
+  return Boolean(detail && /invalid_image/i.test(detail) && /(minimum of \d+ pixels|\d+x\d+)/i.test(detail));
 }
 
 export function reportedBlocker(finalResponse: string): string | null {
@@ -92,6 +100,14 @@ export function reportedBlocker(finalResponse: string): string | null {
   const blocker = finalResponse.match(/^BLOCKER:\s*(.+)$/im)?.[1]?.trim();
   if (blocker && blocker.toLowerCase() !== "none") return blocker;
   return finalResponse.match(/^SUMMARY:\s*(.+)$/im)?.[1]?.trim() || "The agent did not produce a reviewable change.";
+}
+
+function extractErrorMessage(event: unknown): string | null {
+  if (!event || typeof event !== "object") return null;
+  const value = event as { type?: unknown; error?: { message?: unknown } };
+  return value.type === "error" && typeof value.error?.message === "string"
+    ? value.error.message
+    : null;
 }
 
 async function checked(

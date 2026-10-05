@@ -6,6 +6,7 @@ import test from "node:test";
 import {
   AgentRunner,
   commandFailureDetail,
+  isRecoverableImageInputError,
   parseJsonLines,
   reportedBlocker,
   type WorkspaceExecutor,
@@ -94,6 +95,17 @@ test("returns a non-zero OpenCode outcome so the worker can verify produced chan
 test("reports the tail of long command failures", () => {
   const detail = commandFailureDetail({ exitCode: 1, stderr: "", stdout: `start-${"x".repeat(50)}-actual error` }, 20);
   assert.equal(detail, "xxxxxxx-actual error");
+});
+
+test("extracts provider errors from OpenCode JSON events", () => {
+  const detail = commandFailureDetail({
+    exitCode: 1,
+    stderr: "",
+    stdout: '{"type":"step_start"}\n{"type":"error","error":{"message":"invalid_image: image is too small"}}\n',
+  });
+  assert.equal(detail, "invalid_image: image is too small");
+  assert.equal(isRecoverableImageInputError("invalid_image: Image has 256 total pixels (16x16), which is below the minimum of 512 pixels."), true);
+  assert.equal(isRecoverableImageInputError("permission denied"), false);
 });
 
 test("extracts an explicit blocker and otherwise permits verification", () => {

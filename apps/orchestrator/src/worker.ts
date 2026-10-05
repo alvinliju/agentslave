@@ -1,11 +1,16 @@
 import { ContentStore } from "@agentslave/object-store";
 import { extname } from "node:path";
 import pino, { type Logger } from "pino";
-import { reportedBlocker, type AgentRunner } from "./agent.js";
+import {
+  isRecoverableImageInputError,
+  reportedBlocker,
+  type AgentRun,
+  type AgentRunner,
+} from "./agent.js";
 import type { Database } from "./database.js";
 import type { GitHubAppClient } from "./github.js";
 import type { IncusWorkspace, IncusWorkspaceManager } from "./incus.js";
-import { buildFixPrompt } from "./prompt.js";
+import { buildFixPrompt, buildImageInputRecoveryPrompt } from "./prompt.js";
 import type { Job } from "./types.js";
 
 export type WorkerDependencies = {
@@ -70,22 +75,21 @@ export class Worker {
       await this.notify(current, `Started the coding agent in Incus instance \`${workspace.instanceName}\`.`);
 
       const attachedFiles = await this.prepareImageAttachments(job.id, workspace);
-      const run = await this.dependencies.agent.run(
-        this.dependencies.workspaces, workspace, buildFixPrompt(current), attachedFiles,
+      let run = await this.dependencies.agent.run(
+        this.dependencies.workspaces, workspace, buildFixPrompt(current, attachedFiles), attachedFiles,
       );
-      const transcript = await this.dependencies.contentStore.putJson({
-        jobId: job.id,
-        runId: run.runId,
-        exitCode: run.exitCode,
-        exitDetail: run.exitDetail,
-        finalResponse: run.finalResponse,
-        steps: run.steps,
-        totalTokens: run.totalTokens,
-        transcript: run.transcript,
-      });
-      await this.dependencies.database.addArtifact({
-        jobId: job.id, kind: "agent.transcript", ...transcript,
-      });
+      await this.persistAgentRun(job.id, run, 1);
+      if (isRecoverableImageInputError(run.exitDetail)) {
+        await this.dependencies.database.appendEvent(job.id, "agent.retrying", {
+          reason: "tiny_image_provider_rejection",
+          previousExitCode: run.exitCode,
+        });
+        run = await this.dependencies.agent.run(
+          this.dependencies.workspaces, workspace,
+          buildImageInputRecoveryPrompt(current, attachedFiles), attachedFiles,
+        );
+        await this.persistAgentRun(job.id, run, 2);
+      }
       if (run.exitCode !== 0) {
         await this.dependencies.database.appendEvent(job.id, "agent.nonzero_exit", {
           exitCode: run.exitCode,
@@ -162,6 +166,28 @@ export class Worker {
     }
   }
 
+  private async persistAgentRun(jobId: string, run: AgentRun, attempt: number): Promise<void> {
+    const transcript = await this.dependencies.contentStore.putJson({
+      jobId,
+      runId: run.runId,
+      attempt,
+      exitCode: run.exitCode,
+      exitDetail: run.exitDetail,
+      finalResponse: run.finalResponse,
+      steps: run.steps,
+      totalTokens: run.totalTokens,
+      transcript: run.transcript,
+    });
+    await this.dependencies.database.addArtifact({
+      jobId, kind: "agent.transcript", ...transcript,
+    });
+    await this.dependencies.database.appendEvent(jobId, "agent.run_recorded", {
+      attempt,
+      runId: run.runId,
+      exitCode: run.exitCode,
+    });
+  }
+
   private async notify(job: Job, message: string): Promise<void> {
     if (this.dependencies.notify) await this.dependencies.notify(job, message);
   }
@@ -183,6 +209,20 @@ export class Worker {
       await this.dependencies.workspaces.push(workspace.instanceName, destination, bytes);
       paths.push(destination);
     }
+    await this.dependencies.workspaces.push(
+      workspace.instanceName,
+      "/workspace/.agentslave/evidence.json",
+      Buffer.from(JSON.stringify({
+        version: 1,
+        source: "agentslave-object-store",
+        artifacts: artifacts.map((artifact, index) => ({
+          kind: artifact.kind,
+          contentType: artifact.contentType,
+          sha256: artifact.sha256,
+          path: paths[index],
+        })),
+      }, null, 2)),
+    );
     await this.dependencies.database.appendEvent(jobId, "agent.attachments_prepared", {
       count: paths.length,
       contentTypes: artifacts.map((artifact) => artifact.contentType),
