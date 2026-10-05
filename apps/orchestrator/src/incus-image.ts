@@ -29,9 +29,13 @@ try {
   await exec(["cloud-init", "status", "--wait"], 300_000);
   await exec(["apt-get", "update"], 300_000);
   await exec([
-    "apt-get", "install", "-y", "ca-certificates", "curl", "git", "nodejs", "npm",
+    "apt-get", "install", "-y", "ca-certificates", "curl", "git",
     "python3", "python3-venv", "ripgrep", "tmux",
   ], 600_000);
+  await exec([
+    "bash", "-lc",
+    "set -eu; version=22.15.1; curl -fsSLO https://nodejs.org/dist/v${version}/node-v${version}-linux-x64.tar.xz; tar -xJf node-v${version}-linux-x64.tar.xz -C /usr/local --strip-components=1; rm node-v${version}-linux-x64.tar.xz; node --version; npm --version",
+  ], 300_000);
   await exec(["npm", "install", "--global", "@opencode/cli@2.0.22"], 900_000);
   await push("/usr/local/bin/agentslave-git-askpass", askpass);
   await exec(["chmod", "755", "/usr/local/bin/agentslave-git-askpass"]);
