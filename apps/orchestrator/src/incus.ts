@@ -45,6 +45,7 @@ export class IncusWorkspaceManager {
       "--config", `limits.memory=${this.config.memory}`,
     ]), { timeoutMs: 300_000 });
     await this.waitForExec(instanceName);
+    await this.waitForNetwork(instanceName);
     return { instanceName, workingDirectory: "/workspace/repository" };
   }
 
@@ -163,6 +164,19 @@ export class IncusWorkspaceManager {
       await delay(1_000);
     }
     throw new Error(`Incus instance ${instanceName} did not become ready`);
+  }
+
+  private async waitForNetwork(instanceName: string): Promise<void> {
+    const started = Date.now();
+    while (Date.now() - started < 180_000) {
+      const result = await runCommand("incus", this.args([
+        "exec", instanceName, "--disable-stdin", "--",
+        "getent", "hosts", "github.com",
+      ]), { timeoutMs: 10_000 });
+      if (result.exitCode === 0 && result.stdout.trim()) return;
+      await delay(1_000);
+    }
+    throw new Error(`Incus instance ${instanceName} network did not become ready`);
   }
 
 }
