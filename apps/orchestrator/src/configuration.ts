@@ -3,6 +3,11 @@ export type ConfigurationCommand = {
   repository: string | null;
 };
 
+export type VerificationCommand = {
+  matched: boolean;
+  command: string[] | null;
+};
+
 const repositoryPattern = /^[a-zA-Z0-9_.-]+\/[a-zA-Z0-9_.-]+$/;
 
 export function parseConfigurationCommand(text: string): ConfigurationCommand {
@@ -17,4 +22,23 @@ export function parseGitHubRepository(value: string): string | null {
     .replace(/\.git\/?$/i, "")
     .replace(/\/$/, "");
   return repositoryPattern.test(normalized) ? normalized : null;
+}
+
+export function parseVerificationCommand(text: string): VerificationCommand {
+  const match = text.trim().match(/^verify(?:\s+(.+))?$/i);
+  if (!match) return { matched: false, command: null };
+  const source = match[1]?.trim();
+  if (!source || /[\r\n]/.test(source)) return { matched: true, command: null };
+  const command = tokenizeCommand(source);
+  return { matched: true, command: command.length > 0 ? command : null };
+}
+
+function tokenizeCommand(value: string): string[] {
+  const tokens: string[] = [];
+  const pattern = /(?:[^\s"']+|"[^"]*"|'[^']*')+/g;
+  for (const token of value.match(pattern) ?? []) {
+    const normalized = token.replace(/["']/g, "");
+    if (normalized) tokens.push(normalized);
+  }
+  return tokens;
 }

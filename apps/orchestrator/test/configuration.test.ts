@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { parseConfigurationCommand, parseGitHubRepository } from "../src/configuration.js";
+import { parseConfigurationCommand, parseGitHubRepository, parseVerificationCommand } from "../src/configuration.js";
 import { buildFixPrompt, buildRepairPrompt } from "../src/prompt.js";
 
 test("parses a configure command with a GitHub URL", () => {
@@ -19,6 +19,14 @@ test("distinguishes normal bug reports from configuration", () => {
 
 test("rejects non-GitHub repository URLs", () => {
   assert.equal(parseGitHubRepository("https://example.com/acme/storefront"), null);
+});
+
+test("parses a verification command as argv rather than a shell string", () => {
+  assert.deepEqual(
+    parseVerificationCommand('verify npm test --workspace="@aeomatic/admin"'),
+    { matched: true, command: ["npm", "test", "--workspace=@aeomatic/admin"] },
+  );
+  assert.deepEqual(parseVerificationCommand("verify"), { matched: true, command: null });
 });
 
 test("gives the agent a bounded acceptance-test and repair contract", () => {

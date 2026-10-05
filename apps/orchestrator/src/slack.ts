@@ -1,7 +1,7 @@
 import { App } from "@slack/bolt";
 import { ContentStore } from "@agentslave/object-store";
 import type { Database } from "./database.js";
-import { parseConfigurationCommand } from "./configuration.js";
+import { parseConfigurationCommand, parseVerificationCommand } from "./configuration.js";
 import type { GitHubAppClient } from "./github.js";
 import { evaluateIntake } from "./intake.js";
 import { cleanSlackText, extractRepository } from "./supervisor.js";
@@ -51,13 +51,24 @@ export class SlackIntake {
     this.app?.command("/agentslave", async ({ command, ack, respond }) => {
       await ack();
       const configuration = parseConfigurationCommand(command.text);
-      if (!configuration.matched || !configuration.repository) {
-        await respond("Usage: `/agentslave configure https://github.com/owner/repository`");
+      const verification = parseVerificationCommand(command.text);
+      if (configuration.matched) {
+        if (!configuration.repository) {
+          await respond("Usage: `/agentslave configure https://github.com/owner/repository`");
+          return;
+        }
+        await respond(await this.configureRepository(command.team_id, command.user_id, configuration.repository));
         return;
       }
-      await respond(await this.configureRepository(
-        command.team_id, command.user_id, configuration.repository,
-      ));
+      if (verification.matched) {
+        if (!verification.command) {
+          await respond("Usage: `/agentslave verify npm test`");
+          return;
+        }
+        await respond(await this.addVerificationCommand(command.team_id, command.user_id, verification.command));
+        return;
+      }
+      await respond("Usage: `/agentslave configure https://github.com/owner/repository` or `/agentslave verify npm test`");
     });
     this.app?.event("app_mention", async ({ event, body, say }) => {
       const mention = event as unknown as Mention;
@@ -66,10 +77,18 @@ export class SlackIntake {
       const threadTs = mention.thread_ts ?? mention.ts;
       const text = cleanSlackText(mention.text);
       const configuration = parseConfigurationCommand(text);
+      const verification = parseVerificationCommand(text);
       if (configuration.matched) {
         const message = teamId && configuration.repository
           ? await this.configureRepository(teamId, undefined, configuration.repository)
           : "Usage: `@AgentSlave configure https://github.com/owner/repository`";
+        await say({ text: message, thread_ts: threadTs });
+        return;
+      }
+      if (verification.matched) {
+        const message = teamId && verification.command
+          ? await this.addVerificationCommand(teamId, undefined, verification.command)
+          : "Usage: `@AgentSlave verify npm test`";
         await say({ text: message, thread_ts: threadTs });
         return;
       }
@@ -132,12 +151,33 @@ export class SlackIntake {
     }
     try {
       const registration = await this.github.discoverRepository(repository);
-      await this.database.registerRepository(registration);
+      const existing = await this.database.getRepository(registration.fullName);
+      await this.database.registerRepository({
+        ...registration,
+        verificationCommands: existing?.verificationCommands ?? registration.verificationCommands,
+      });
       await this.database.bindSlackRepository(teamId, registration.fullName, userId);
       return `Configured this Slack workspace to use \`${registration.fullName}\` (${registration.defaultBranch}).`;
     } catch {
       return `I could not access \`${repository}\`. Install the AgentSlave GitHub App on that repository, then retry.`;
     }
+  }
+
+  private async addVerificationCommand(
+    teamId: string,
+    userId: string | undefined,
+    command: string[],
+  ): Promise<string> {
+    const fullName = await this.database.getSlackRepository(teamId);
+    if (!fullName) return "Configure a GitHub repository first: `@AgentSlave configure owner/repository`.";
+    const repository = await this.database.getRepository(fullName);
+    if (!repository) return `The configured repository \`${fullName}\` is no longer available.`;
+    const exists = repository.verificationCommands.some((entry) => entry.join("\u0000") === command.join("\u0000"));
+    const verificationCommands = exists ? repository.verificationCommands : [...repository.verificationCommands, command];
+    await this.database.registerRepository({ ...repository, verificationCommands });
+    return exists
+      ? `Verification command already configured for \`${fullName}\`: \`${command.join(" ")}\`.`
+      : `Added required verification for \`${fullName}\`: \`${command.join(" ")}\`. Future runs will repair against this check before a PR is created.`;
   }
 
   private async storeFiles(jobId: string, files: SlackFile[]): Promise<void> {
