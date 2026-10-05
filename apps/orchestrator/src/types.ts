@@ -32,6 +32,19 @@ export type JobEvent = {
   createdAt: Date;
 };
 
+export type Artifact = {
+  id: string;
+  jobId: string;
+  kind: string;
+  sha256: string;
+  storageBackend: string;
+  storageLocation: string;
+  byteSize: number;
+  contentType: string;
+  sourceUrl: string | null;
+  createdAt: Date;
+};
+
 export type RepositoryRegistration = {
   fullName: string;
   installationId: number;

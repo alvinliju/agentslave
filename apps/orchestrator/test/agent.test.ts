@@ -41,10 +41,14 @@ test("runs Grok through OpenCode with the current credential database", async ()
   const result = await runner.run(executor, {
     instanceName: "as-test",
     workingDirectory: "/workspace/repository",
-  }, "Fix the counter");
+  }, "Fix the counter", ["/workspace/.agentslave/attachments/evidence-1.png"]);
 
   const opencode = commands.find((command) => command[0] === "opencode");
   assert.ok(opencode?.includes("xai/grok-4.7"));
+  assert.deepEqual(
+    opencode?.slice(opencode.indexOf("--file"), opencode.indexOf("--file") + 2),
+    ["--file", "/workspace/.agentslave/attachments/evidence-1.png"],
+  );
   assert.equal(opencode?.includes("--dir"), false);
   assert.equal(result.finalResponse, "Fixed the stale counter and ran npm test.");
   assert.equal(String(inputs.find((input) => input instanceof Buffer)), "sqlite-credential-store");

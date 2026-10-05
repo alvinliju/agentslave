@@ -1,4 +1,5 @@
 import { ContentStore } from "@agentslave/object-store";
+import { extname } from "node:path";
 import pino, { type Logger } from "pino";
 import type { AgentRunner } from "./agent.js";
 import type { Database } from "./database.js";
@@ -68,8 +69,9 @@ export class Worker {
       );
       await this.notify(current, `Started the coding agent in Incus instance \`${workspace.instanceName}\`.`);
 
+      const attachedFiles = await this.prepareImageAttachments(job.id, workspace);
       const run = await this.dependencies.agent.run(
-        this.dependencies.workspaces, workspace, buildFixPrompt(current),
+        this.dependencies.workspaces, workspace, buildFixPrompt(current), attachedFiles,
       );
       const transcript = await this.dependencies.contentStore.putJson({
         jobId: job.id,
@@ -149,7 +151,33 @@ export class Worker {
   private async notify(job: Job, message: string): Promise<void> {
     if (this.dependencies.notify) await this.dependencies.notify(job, message);
   }
+
+  private async prepareImageAttachments(jobId: string, workspace: IncusWorkspace): Promise<string[]> {
+    const artifacts = (await this.dependencies.database.listArtifacts(jobId))
+      .filter((artifact) => artifact.kind === "slack.attachment")
+      .filter((artifact) => supportedImageTypes.has(artifact.contentType.toLowerCase()))
+      .slice(0, 5);
+    if (artifacts.length === 0) return [];
+
+    const directory = "/workspace/.agentslave/attachments";
+    await this.dependencies.workspaces.exec(workspace.instanceName, ["mkdir", "-p", directory]);
+    const paths: string[] = [];
+    for (const [index, artifact] of artifacts.entries()) {
+      const extension = extname(artifact.storageLocation) || ".bin";
+      const destination = `${directory}/evidence-${index + 1}${extension}`;
+      const bytes = await this.dependencies.contentStore.readBytes(artifact.sha256, extension);
+      await this.dependencies.workspaces.push(workspace.instanceName, destination, bytes);
+      paths.push(destination);
+    }
+    await this.dependencies.database.appendEvent(jobId, "agent.attachments_prepared", {
+      count: paths.length,
+      contentTypes: artifacts.map((artifact) => artifact.contentType),
+    });
+    return paths;
+  }
 }
+
+const supportedImageTypes = new Set(["image/png", "image/jpeg", "image/gif", "image/webp"]);
 
 function pullRequestBody(job: Job, agentSummary: string, diffStat: string): string {
   return `## Bug report

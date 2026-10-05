@@ -38,6 +38,7 @@ export class AgentRunner {
     executor: WorkspaceExecutor,
     workspace: AgentWorkspace,
     prompt: string,
+    files: string[] = [],
   ): Promise<AgentRun> {
     if (!this.config.authPath) throw new Error("OPENCODE_AUTH_PATH is not configured");
     const auth = await readFile(this.config.authPath);
@@ -47,14 +48,16 @@ export class AgentRunner {
     await checked(executor, workspace, ["chmod", "600", credentialFile]);
 
     try {
-      const result = await executor.execResult(workspace.instanceName, [
+      const command = [
         "opencode", "run",
         "--standalone",
         "--format", "json",
         "--auto",
         "--model", this.config.model,
-        prompt,
-      ], {
+      ];
+      for (const file of files) command.push("--file", file);
+      command.push(prompt);
+      const result = await executor.execResult(workspace.instanceName, command, {
         cwd: workspace.workingDirectory,
         env: ["OPENCODE_DISABLE_AUTOUPDATE=true", "HOME=/root"],
         timeoutMs: this.config.timeoutMs,

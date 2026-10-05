@@ -1,5 +1,5 @@
 import pg, { type PoolClient, type QueryResultRow } from "pg";
-import type { Intake, Job, JobEvent, JobStatus, RepositoryRegistration } from "./types.js";
+import type { Artifact, Intake, Job, JobEvent, JobStatus, RepositoryRegistration } from "./types.js";
 
 const transitions: Record<JobStatus, ReadonlySet<JobStatus>> = {
   RECEIVED: new Set(["NEEDS_CONTEXT", "READY", "FAILED", "CANCELLED"]),
@@ -85,6 +85,14 @@ export class Database {
       [jobId],
     );
     return result.rows.map(mapEvent);
+  }
+
+  async listArtifacts(jobId: string): Promise<Artifact[]> {
+    const result = await this.pool.query(
+      "SELECT * FROM artifacts WHERE job_id = $1 ORDER BY created_at ASC, id ASC",
+      [jobId],
+    );
+    return result.rows.map(mapArtifact);
   }
 
   async appendEvent(jobId: string, kind: string, payload: Record<string, unknown>): Promise<void> {
@@ -297,6 +305,16 @@ function mapJob(row: QueryResultRow): Job {
 function mapEvent(row: QueryResultRow): JobEvent {
   return { id: Number(row.id), jobId: String(row.job_id), kind: String(row.kind),
     payload: row.payload as Record<string, unknown>, createdAt: new Date(row.created_at) };
+}
+
+function mapArtifact(row: QueryResultRow): Artifact {
+  return {
+    id: String(row.id), jobId: String(row.job_id), kind: String(row.kind),
+    sha256: String(row.sha256), storageBackend: String(row.storage_backend),
+    storageLocation: String(row.storage_location), byteSize: Number(row.byte_size),
+    contentType: String(row.content_type), sourceUrl: nullableString(row.source_url),
+    createdAt: new Date(row.created_at),
+  };
 }
 
 function mapRepository(row: QueryResultRow): RepositoryRegistration {

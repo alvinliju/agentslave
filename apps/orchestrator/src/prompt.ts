@@ -8,6 +8,9 @@ Bug: ${job.title}
 Reporter details:
 ${job.details}
 
+Evidence:
+Inspect every attached screenshot before deciding what is broken. Treat the visual evidence and the reporter's text as one bug report.
+
 Required workflow:
 1. Inspect the repository and its contributor instructions.
 2. Reproduce or identify a deterministic failing case before changing code.
