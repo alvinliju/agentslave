@@ -1,6 +1,7 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 import { parseConfigurationCommand, parseGitHubRepository } from "../src/configuration.js";
+import { buildFixPrompt, buildRepairPrompt } from "../src/prompt.js";
 
 test("parses a configure command with a GitHub URL", () => {
   assert.deepEqual(
@@ -18,4 +19,15 @@ test("distinguishes normal bug reports from configuration", () => {
 
 test("rejects non-GitHub repository URLs", () => {
   assert.equal(parseGitHubRepository("https://example.com/acme/storefront"), null);
+});
+
+test("gives the agent a bounded acceptance-test and repair contract", () => {
+  const job = { title: "icons missing", details: "icons do not render" } as never;
+  const prompt = buildFixPrompt(job, [], [["npm", "test"]]);
+  assert.match(prompt, /acceptance condition/);
+  assert.match(prompt, /npm test/);
+  assert.match(prompt, /6 exploration commands/);
+  const repair = buildRepairPrompt(job, [], ["npm", "test"], "expected icon", 2, [["npm", "test"]]);
+  assert.match(repair, /repair attempt 2/);
+  assert.match(repair, /expected icon/);
 });

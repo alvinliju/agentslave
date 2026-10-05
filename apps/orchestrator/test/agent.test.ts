@@ -119,3 +119,9 @@ VERIFICATION: npm test passed
 BLOCKER: none`), null);
   assert.equal(reportedBlocker("OpenCode stopped after editing files."), null);
 });
+
+test("reports a time-budget exhaustion distinctly from a provider failure", () => {
+  assert.equal(commandFailureDetail({
+    exitCode: 1, stderr: "", stdout: "", timedOut: true,
+  }), "Agent attempt exceeded its time budget.");
+});

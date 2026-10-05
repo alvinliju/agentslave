@@ -42,6 +42,7 @@ const slack = new SlackIntake({
 const worker = new Worker({
   database, github, workspaces, agent, contentStore,
   pollMs: config.WORKER_POLL_MS,
+  maxAgentAttempts: config.AGENT_MAX_ATTEMPTS,
   logger,
   notify: (job, message) => slack.notify(job, message),
 });

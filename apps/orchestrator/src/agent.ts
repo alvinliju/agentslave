@@ -29,6 +29,7 @@ export type AgentRun = {
   steps: number;
   totalTokens: number;
   transcript: unknown[];
+  timedOut: boolean;
 };
 
 const authDirectory = "/root/.local/share/opencode";
@@ -41,6 +42,7 @@ export class AgentRunner {
     workspace: AgentWorkspace,
     prompt: string,
     files: string[] = [],
+    timeoutMs = this.config.timeoutMs,
   ): Promise<AgentRun> {
     if (!this.config.authPath) throw new Error("OPENCODE_AUTH_PATH is not configured");
     const auth = await readFile(this.config.authPath);
@@ -62,7 +64,7 @@ export class AgentRunner {
       const result = await executor.execResult(workspace.instanceName, command, {
         cwd: workspace.workingDirectory,
         env: ["OPENCODE_DISABLE_AUTOUPDATE=true", "HOME=/root"],
-        timeoutMs: this.config.timeoutMs,
+        timeoutMs,
       });
       const transcript = parseJsonLines(result.stdout);
       return {
@@ -73,6 +75,7 @@ export class AgentRunner {
         steps: transcript.length,
         totalTokens: tokenCount(transcript),
         transcript,
+        timedOut: result.timedOut,
       };
     } finally {
       await executor.execResult(workspace.instanceName, ["rm", "-f", credentialFile])
@@ -82,6 +85,7 @@ export class AgentRunner {
 }
 
 export function commandFailureDetail(result: CommandResult, limit = 2_000): string {
+  if (result.timedOut) return "Agent attempt exceeded its time budget.";
   const structuredError = parseJsonLines(result.stdout).reverse()
     .map(extractErrorMessage)
     .find((message): message is string => Boolean(message));

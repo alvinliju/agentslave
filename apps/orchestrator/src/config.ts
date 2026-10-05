@@ -28,6 +28,7 @@ const schema = z.object({
   AGENT_MODEL: z.string().default("xai/grok-4.7"),
   OPENCODE_AUTH_PATH: optionalText,
   AGENT_TIMEOUT_MS: z.coerce.number().int().min(60_000).default(45 * 60_000),
+  AGENT_MAX_ATTEMPTS: z.coerce.number().int().min(1).max(5).default(2),
   WORKER_ENABLED: booleanText,
   WORKER_POLL_MS: z.coerce.number().int().min(250).default(2000),
 });

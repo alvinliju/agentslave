@@ -10,7 +10,7 @@ import {
 import type { Database } from "./database.js";
 import type { GitHubAppClient } from "./github.js";
 import type { IncusWorkspace, IncusWorkspaceManager } from "./incus.js";
-import { buildFixPrompt, buildImageInputRecoveryPrompt } from "./prompt.js";
+import { buildFixPrompt, buildImageInputRecoveryPrompt, buildRepairPrompt } from "./prompt.js";
 import type { Job } from "./types.js";
 
 export type WorkerDependencies = {
@@ -20,6 +20,7 @@ export type WorkerDependencies = {
   agent: AgentRunner;
   contentStore: ContentStore;
   pollMs: number;
+  maxAgentAttempts: number;
   logger?: Logger;
   notify?: (job: Job, message: string) => Promise<void>;
 };
@@ -60,6 +61,9 @@ export class Worker {
       const repository = await this.dependencies.database.getRepository(job.repository);
       if (!repository) throw new Error(`Repository ${job.repository} is not registered`);
       if (!this.dependencies.github.configured()) throw new Error("GitHub App is not configured");
+      if (repository.verificationCommands.length === 0) {
+        throw new Error("No PR was created because this repository has no required verification commands configured. Configure at least one command so AgentSlave can independently prove the reported fix.");
+      }
 
       const branchName = `agentslave/${job.id}`;
       workspace = await this.dependencies.workspaces.provision(job.id);
@@ -76,7 +80,8 @@ export class Worker {
 
       const attachedFiles = await this.prepareImageAttachments(job.id, workspace);
       let run = await this.dependencies.agent.run(
-        this.dependencies.workspaces, workspace, buildFixPrompt(current, attachedFiles), attachedFiles,
+        this.dependencies.workspaces, workspace,
+        buildFixPrompt(current, attachedFiles, repository.verificationCommands), attachedFiles,
       );
       await this.persistAgentRun(job.id, run, 1);
       if (isRecoverableImageInputError(run.exitDetail)) {
@@ -86,7 +91,7 @@ export class Worker {
         });
         run = await this.dependencies.agent.run(
           this.dependencies.workspaces, workspace,
-          buildImageInputRecoveryPrompt(current, attachedFiles), attachedFiles,
+          buildImageInputRecoveryPrompt(current, attachedFiles, repository.verificationCommands), attachedFiles,
         );
         await this.persistAgentRun(job.id, run, 2);
       }
@@ -105,25 +110,38 @@ export class Worker {
       const blocker = reportedBlocker(run.finalResponse);
       if (blocker) throw new Error(`The agent reported that no PR should be created: ${blocker}`);
 
-      const status = await this.dependencies.workspaces.execResult(
-        workspace.instanceName, ["git", "status", "--porcelain"],
-        { cwd: workspace.workingDirectory },
-      );
-      if (status.exitCode !== 0) throw new Error(`git status failed: ${status.stderr}`);
-      if (!status.stdout.trim()) {
-        const detail = run.exitDetail ? ` OpenCode exit detail: ${run.exitDetail}` : "";
-        throw new Error(`No PR was created because the agent produced no file changes.${detail}`);
+      if (run.timedOut) {
+        throw new Error("Agent time budget exceeded before a reviewable result was reported.");
       }
-      await this.dependencies.workspaces.exec(
-        workspace.instanceName, ["git", "diff", "--check"],
-        { cwd: workspace.workingDirectory },
-      );
-      for (const command of repository.verificationCommands) {
-        if (command.length === 0) continue;
-        await this.dependencies.workspaces.exec(
-          workspace.instanceName, command,
-          { cwd: workspace.workingDirectory, timeoutMs: 15 * 60_000 },
+
+      let verification = await this.verify(workspace, repository.verificationCommands);
+      let agentAttempts = isRecoverableImageInputError(run.exitDetail) ? 2 : 1;
+      while (!verification.ok && agentAttempts < this.dependencies.maxAgentAttempts) {
+        agentAttempts += 1;
+        await this.dependencies.database.appendEvent(job.id, "verification.retrying", {
+          attempt: agentAttempts,
+          command: verification.command,
+          output: verification.output.slice(-4_000),
+        });
+        run = await this.dependencies.agent.run(
+          this.dependencies.workspaces,
+          workspace,
+          buildRepairPrompt(
+            current, attachedFiles, verification.command, verification.output,
+            agentAttempts, repository.verificationCommands,
+          ),
+          attachedFiles,
         );
+        await this.persistAgentRun(job.id, run, agentAttempts);
+        if (run.timedOut) {
+          throw new Error(`Agent repair attempt ${agentAttempts} exceeded its time budget.`);
+        }
+        const repairBlocker = reportedBlocker(run.finalResponse);
+        if (repairBlocker) throw new Error(`The agent reported that no PR should be created: ${repairBlocker}`);
+        verification = await this.verify(workspace, repository.verificationCommands);
+      }
+      if (!verification.ok) {
+        throw new Error(`Verification failed after ${agentAttempts} attempt${agentAttempts === 1 ? "" : "s"}: ${verification.command.join(" ")}: ${verification.output}`);
       }
 
       const diffStat = await this.dependencies.workspaces.exec(
@@ -177,6 +195,7 @@ export class Worker {
       steps: run.steps,
       totalTokens: run.totalTokens,
       transcript: run.transcript,
+      timedOut: run.timedOut,
     });
     await this.dependencies.database.addArtifact({
       jobId, kind: "agent.transcript", ...transcript,
@@ -185,11 +204,32 @@ export class Worker {
       attempt,
       runId: run.runId,
       exitCode: run.exitCode,
+      timedOut: run.timedOut,
     });
   }
 
   private async notify(job: Job, message: string): Promise<void> {
     if (this.dependencies.notify) await this.dependencies.notify(job, message);
+  }
+
+  private async verify(
+    workspace: IncusWorkspace,
+    commands: string[][],
+  ): Promise<{ ok: true } | { ok: false; command: string[]; output: string }> {
+    const checks = [["git", "status", "--porcelain"], ["git", "diff", "--check"], ...commands];
+    for (const command of checks) {
+      const result = await this.dependencies.workspaces.execResult(
+        workspace.instanceName,
+        command,
+        { cwd: workspace.workingDirectory, timeoutMs: 15 * 60_000 },
+      );
+      if (result.timedOut) return { ok: false, command, output: "command exceeded its 15 minute verification budget" };
+      if (result.exitCode !== 0) return { ok: false, command, output: (result.stderr || result.stdout || "no output").slice(-4_000) };
+      if (command[0] === "git" && command[1] === "status" && !result.stdout.trim()) {
+        return { ok: false, command, output: "agent produced no file changes" };
+      }
+    }
+    return { ok: true };
   }
 
   private async prepareImageAttachments(jobId: string, workspace: IncusWorkspace): Promise<string[]> {

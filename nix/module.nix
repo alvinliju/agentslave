@@ -21,6 +21,7 @@ let
     INCUS_IMAGE = cfg.incus.image;
     INCUS_CPU = toString cfg.incus.cpu;
     INCUS_MEMORY = cfg.incus.memory;
+    AGENT_MAX_ATTEMPTS = toString cfg.agent.maxAttempts;
   };
   serviceHardening = {
     User = "agentslave";
@@ -60,6 +61,12 @@ in
     worker.enable = lib.mkOption {
       type = lib.types.bool;
       default = true;
+    };
+
+    agent.maxAttempts = lib.mkOption {
+      type = lib.types.ints.between 1 5;
+      default = 2;
+      description = "Maximum bounded coding attempts per job, including a repair attempt after failed verification.";
     };
 
     database = {
