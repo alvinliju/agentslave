@@ -112,7 +112,7 @@ in
       };
       reapInterval = lib.mkOption {
         type = lib.types.str;
-        default = "5m";
+        default = "1m";
         description = "How often to remove AgentSlave Incus instances older than maxAgeSeconds.";
       };
     };
