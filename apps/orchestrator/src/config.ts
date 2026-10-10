@@ -17,7 +17,7 @@ const schema = z.object({
   INCUS_PROFILE: z.string().default("default"),
   INCUS_CPU: z.coerce.number().int().positive().default(4),
   INCUS_MEMORY: z.string().default("8GiB"),
-  INCUS_AUTO_DELETE: z.string().default("false").transform((value) => value.toLowerCase() === "true"),
+  INCUS_AUTO_DELETE: z.string().default("true").transform((value) => value.toLowerCase() === "true"),
   SLACK_BOT_TOKEN: optionalText,
   SLACK_SIGNING_SECRET: optionalText,
   SLACK_APP_TOKEN: optionalText,

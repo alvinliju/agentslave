@@ -32,8 +32,10 @@ The service exposes `GET /health`, `GET /api/jobs`,
 `npm run status` for a terminal view of recent jobs.
 
 For the container-side view, run `incus --project agentslave list` and
-`incus --project agentslave exec <instance> -- bash`. Failed instances are kept
-by default so the workspace and agent logs remain inspectable.
+`incus --project agentslave exec <instance> -- bash`. Instances are deleted as
+soon as their run finishes. The NixOS service also runs an independent reaper
+every five minutes and force-deletes any AgentSlave instance older than one hour,
+including workspaces orphaned by a worker crash.
 
 Slack is optional during local development. You can enqueue a sample job with:
 
@@ -75,6 +77,8 @@ services.agentslave = {
     enable = true;
     cpu = 2;
     memory = "2GiB";
+    autoDelete = true;
+    maxAgeSeconds = 3600;
   };
 };
 ```

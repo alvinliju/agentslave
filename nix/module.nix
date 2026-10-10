@@ -21,6 +21,7 @@ let
     INCUS_IMAGE = cfg.incus.image;
     INCUS_CPU = toString cfg.incus.cpu;
     INCUS_MEMORY = cfg.incus.memory;
+    INCUS_AUTO_DELETE = if cfg.incus.autoDelete then "true" else "false";
   };
   serviceHardening = {
     User = "agentslave";
@@ -98,6 +99,21 @@ in
       memory = lib.mkOption {
         type = lib.types.str;
         default = "2GiB";
+      };
+      autoDelete = lib.mkOption {
+        type = lib.types.bool;
+        default = true;
+        description = "Delete an Incus workspace immediately after its run finishes.";
+      };
+      maxAgeSeconds = lib.mkOption {
+        type = lib.types.ints.positive;
+        default = 3600;
+        description = "Hard maximum lifetime for AgentSlave Incus instances.";
+      };
+      reapInterval = lib.mkOption {
+        type = lib.types.str;
+        default = "5m";
+        description = "How often to remove AgentSlave Incus instances older than maxAgeSeconds.";
       };
     };
   };
@@ -226,6 +242,41 @@ in
         Type = "oneshot";
         StateDirectory = "agentslave";
         TimeoutStartSec = "30min";
+      };
+    };
+
+    systemd.services.agentslave-incus-reaper = lib.mkIf cfg.incus.enable {
+      description = "Remove expired AgentSlave Incus instances";
+      after = [ "incus.service" ];
+      requires = [ "incus.service" ];
+      environment = commonEnvironment;
+      path = [ config.virtualisation.incus.clientPackage ];
+      script = ''
+        now=$(${pkgs.coreutils}/bin/date +%s)
+        cutoff=$((now - ${toString cfg.incus.maxAgeSeconds}))
+        incus --project "${cfg.incus.project}" list --format json \
+          | ${pkgs.jq}/bin/jq -r '.[] | select(.name | startswith("as-")) | [.name, .created_at] | @tsv' \
+          | while IFS=$'\t' read -r name created_at; do
+              created_epoch=$(${pkgs.coreutils}/bin/date --date="$created_at" +%s 2>/dev/null || true)
+              if [ -n "$created_epoch" ] && [ "$created_epoch" -le "$cutoff" ]; then
+                echo "Deleting expired Incus instance $name (created $created_at)"
+                incus --project "${cfg.incus.project}" delete --force "$name"
+              fi
+            done
+      '';
+      serviceConfig = serviceHardening // {
+        Type = "oneshot";
+      };
+    };
+
+    systemd.timers.agentslave-incus-reaper = lib.mkIf cfg.incus.enable {
+      description = "Enforce the AgentSlave Incus instance lifetime limit";
+      wantedBy = [ "timers.target" ];
+      timerConfig = {
+        OnBootSec = cfg.incus.reapInterval;
+        OnUnitActiveSec = cfg.incus.reapInterval;
+        RandomizedDelaySec = "30s";
+        Persistent = true;
       };
     };
 
