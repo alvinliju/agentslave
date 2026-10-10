@@ -10,7 +10,8 @@ review.
 This first draft uses one lightweight Incus container per run. It does not use
 Docker. The default image is a reusable `agentslave-worker-v4` image containing
 Codex, OpenCode, and ordinary developer tools. Codex is the default executor;
-OpenCode remains available as an explicitly configured fallback.
+it uses `gpt-5.5` by default. OpenCode remains available as an explicitly
+configured fallback.
 
 ## Repository layout
 

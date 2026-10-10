@@ -82,7 +82,8 @@ export class AgentRunner {
       });
       if (result.exitCode !== 0) {
         const name = this.config.provider === "codex" ? "Codex" : "OpenCode";
-        throw new Error(`${name} failed with ${result.exitCode}: ${(result.stderr || result.stdout).slice(0, 2_000)}`);
+        const output = [result.stderr.trim(), result.stdout.trim()].filter(Boolean).join("\n");
+        throw new Error(`${name} failed with ${result.exitCode}: ${(output || "no output").slice(0, 2_000)}`);
       }
       const transcript = parseJsonLines(result.stdout);
       return {

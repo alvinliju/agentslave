@@ -85,6 +85,7 @@ test("runs Codex with ChatGPT auth and persists refreshed credentials", async ()
   };
   const runner = new AgentRunner({
     provider: "codex",
+    model: "gpt-5.5",
     authPath,
     timeoutMs: 60_000,
   });
@@ -98,6 +99,10 @@ test("runs Codex with ChatGPT auth and persists refreshed credentials", async ()
   assert.deepEqual(codex?.slice(0, 7), [
     "codex", "exec", "--json", "--ephemeral", "--sandbox", "danger-full-access", "--ignore-user-config",
   ]);
+  assert.deepEqual(
+    codex?.slice(codex.indexOf("--model"), codex.indexOf("--model") + 2),
+    ["--model", "gpt-5.5"],
+  );
   assert.deepEqual(
     codex?.slice(codex.indexOf("--image"), codex.indexOf("--image") + 2),
     ["--image", "/workspace/.agentslave/attachments/evidence-1.png"],

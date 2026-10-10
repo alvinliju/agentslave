@@ -23,6 +23,7 @@ let
     INCUS_MEMORY = cfg.incus.memory;
     INCUS_AUTO_DELETE = if cfg.incus.autoDelete then "true" else "false";
     AGENT_PROVIDER = cfg.agent.provider;
+    CODEX_MODEL = cfg.agent.model;
     CODEX_AUTH_PATH = cfg.agent.codexAuthPath;
   };
   serviceHardening = {
@@ -73,6 +74,11 @@ in
         ];
         default = "codex";
         description = "Coding-agent executor used for new runs.";
+      };
+      model = lib.mkOption {
+        type = lib.types.str;
+        default = "gpt-5.5";
+        description = "Codex model used for coding-agent runs.";
       };
       codexAuthPath = lib.mkOption {
         type = lib.types.str;
