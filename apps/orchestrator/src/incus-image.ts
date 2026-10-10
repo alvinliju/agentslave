@@ -32,6 +32,8 @@ try {
     "apt-get", "install", "-y", "ca-certificates", "curl", "git", "nodejs", "npm",
     "python3", "python3-venv", "ripgrep", "tmux",
   ], 600_000);
+  await exec(["npm", "install", "--global", "node@22.23.3"], 900_000);
+  await exec(["node", "--version"]);
   await exec([
     "npm", "install", "--global", "@opencode/cli@2.0.22", "@openai/codex@0.162.1",
   ], 900_000);

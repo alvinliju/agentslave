@@ -8,7 +8,7 @@ an Incus system container, and opens a draft GitHub pull request for human
 review.
 
 This first draft uses one lightweight Incus container per run. It does not use
-Docker. The default image is a reusable `agentslave-worker-v3` image containing
+Docker. The default image is a reusable `agentslave-worker-v4` image containing
 Codex, OpenCode, and ordinary developer tools. Codex is the default executor;
 OpenCode remains available as an explicitly configured fallback.
 

@@ -108,7 +108,7 @@ in
       };
       image = lib.mkOption {
         type = lib.types.str;
-        default = "agentslave-worker-v3";
+        default = "agentslave-worker-v4";
       };
       cpu = lib.mkOption {
         type = lib.types.ints.positive;
