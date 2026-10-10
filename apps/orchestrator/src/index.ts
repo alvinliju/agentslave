@@ -29,8 +29,17 @@ const workspaces = new IncusWorkspaceManager({
   autoDelete: config.INCUS_AUTO_DELETE,
 });
 const agent = new AgentRunner({
-  model: config.AGENT_MODEL,
-  ...(config.OPENCODE_AUTH_PATH ? { authPath: config.OPENCODE_AUTH_PATH } : {}),
+  provider: config.AGENT_PROVIDER,
+  ...(config.AGENT_PROVIDER === "codex" && config.CODEX_MODEL
+    ? { model: config.CODEX_MODEL }
+    : config.AGENT_PROVIDER === "opencode"
+      ? { model: config.AGENT_MODEL }
+      : {}),
+  ...(config.AGENT_PROVIDER === "codex"
+    ? { authPath: config.CODEX_AUTH_PATH }
+    : config.OPENCODE_AUTH_PATH
+      ? { authPath: config.OPENCODE_AUTH_PATH }
+      : {}),
   timeoutMs: config.AGENT_TIMEOUT_MS,
 });
 const slack = new SlackIntake({

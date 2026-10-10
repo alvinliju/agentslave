@@ -1,9 +1,10 @@
 import { randomUUID } from "node:crypto";
-import { readFile } from "node:fs/promises";
+import { readFile, writeFile } from "node:fs/promises";
 import type { CommandResult } from "./process.js";
 
 export type AgentConfig = {
-  model: string;
+  provider: "codex" | "opencode";
+  model?: string;
   authPath?: string;
   timeoutMs: number;
 };
@@ -29,8 +30,6 @@ export type AgentRun = {
   transcript: unknown[];
 };
 
-const authDirectory = "/root/.local/share/opencode";
-
 export class AgentRunner {
   constructor(private readonly config: AgentConfig) {}
 
@@ -40,30 +39,50 @@ export class AgentRunner {
     prompt: string,
     files: string[] = [],
   ): Promise<AgentRun> {
-    if (!this.config.authPath) throw new Error("OPENCODE_AUTH_PATH is not configured");
+    if (!this.config.authPath) {
+      throw new Error(`${this.config.provider === "codex" ? "CODEX" : "OPENCODE"}_AUTH_PATH is not configured`);
+    }
     const auth = await readFile(this.config.authPath);
-    const credentialFile = `${authDirectory}/${this.config.authPath.endsWith(".db") ? "opencode.db" : "auth.json"}`;
+    const authDirectory = this.config.provider === "codex"
+      ? "/root/.codex"
+      : "/root/.local/share/opencode";
+    const credentialFile = this.config.provider === "codex"
+      ? `${authDirectory}/auth.json`
+      : `${authDirectory}/${this.config.authPath.endsWith(".db") ? "opencode.db" : "auth.json"}`;
     await checked(executor, workspace, ["mkdir", "-p", authDirectory]);
     await checked(executor, workspace, ["tee", credentialFile], auth);
     await checked(executor, workspace, ["chmod", "600", credentialFile]);
 
     try {
-      const command = [
-        "opencode", "run",
-        "--standalone",
-        "--format", "json",
-        "--auto",
-        "--model", this.config.model,
-      ];
-      for (const file of files) command.push("--file", file);
+      const command = this.config.provider === "codex"
+        ? [
+            "codex", "exec",
+            "--json",
+            "--ephemeral",
+            "--sandbox", "danger-full-access",
+            "--ignore-user-config",
+          ]
+        : [
+            "opencode", "run",
+            "--standalone",
+            "--format", "json",
+            "--auto",
+          ];
+      if (this.config.model) command.push("--model", this.config.model);
+      for (const file of files) {
+        command.push(this.config.provider === "codex" ? "--image" : "--file", file);
+      }
       command.push(prompt);
       const result = await executor.execResult(workspace.instanceName, command, {
         cwd: workspace.workingDirectory,
-        env: ["OPENCODE_DISABLE_AUTOUPDATE=true", "HOME=/root"],
+        env: this.config.provider === "codex"
+          ? ["HOME=/root", "CODEX_HOME=/root/.codex"]
+          : ["OPENCODE_DISABLE_AUTOUPDATE=true", "HOME=/root"],
         timeoutMs: this.config.timeoutMs,
       });
       if (result.exitCode !== 0) {
-        throw new Error(`OpenCode failed with ${result.exitCode}: ${(result.stderr || result.stdout).slice(0, 2_000)}`);
+        const name = this.config.provider === "codex" ? "Codex" : "OpenCode";
+        throw new Error(`${name} failed with ${result.exitCode}: ${(result.stderr || result.stdout).slice(0, 2_000)}`);
       }
       const transcript = parseJsonLines(result.stdout);
       return {
@@ -74,6 +93,14 @@ export class AgentRunner {
         transcript,
       };
     } finally {
+      if (this.config.provider === "codex") {
+        const refreshed = await executor.execResult(workspace.instanceName, ["cat", credentialFile], {
+          timeoutMs: 30_000,
+        }).catch(() => null);
+        if (refreshed?.exitCode === 0 && refreshed.stdout.trim()) {
+          await writeFile(this.config.authPath, refreshed.stdout, { mode: 0o600 });
+        }
+      }
       await executor.execResult(workspace.instanceName, ["rm", "-f", credentialFile])
         .catch(() => undefined);
     }
@@ -113,12 +140,12 @@ function finalText(events: unknown[], fallback: string): string {
     .map((value) => value.trim())
     .filter(Boolean);
   const fallbackText = fallback.trim().slice(-4_000);
-  return texts.at(-1) ?? (fallbackText || "OpenCode completed without a summary.");
+  return texts.at(-1) ?? (fallbackText || "The coding agent completed without a summary.");
 }
 
 function tokenCount(events: unknown[]): number {
   return events.reduce<number>((total, event) => total + collectNumbers(
-    event, new Set(["total_tokens", "totalTokens", "tokens"]),
+    event, new Set(["total_tokens", "totalTokens", "tokens", "input_tokens", "output_tokens"]),
   ), 0);
 }
 

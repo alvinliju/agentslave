@@ -32,13 +32,15 @@ try {
     "apt-get", "install", "-y", "ca-certificates", "curl", "git", "nodejs", "npm",
     "python3", "python3-venv", "ripgrep", "tmux",
   ], 600_000);
-  await exec(["npm", "install", "--global", "@opencode/cli@2.0.22"], 900_000);
+  await exec([
+    "npm", "install", "--global", "@opencode/cli@2.0.22", "@openai/codex@0.162.1",
+  ], 900_000);
   await push("/usr/local/bin/agentslave-git-askpass", askpass);
   await exec(["chmod", "755", "/usr/local/bin/agentslave-git-askpass"]);
   await runChecked("incus", [...projectArgs, "stop", builder], { timeoutMs: 120_000 });
   await runChecked("incus", [
     ...projectArgs, "publish", builder, "--alias", config.INCUS_IMAGE,
-    "description=AgentSlave OpenCode worker image",
+    "description=AgentSlave Codex and OpenCode worker image",
   ], { timeoutMs: 900_000 });
   await runChecked("incus", [...projectArgs, "delete", builder], { timeoutMs: 120_000 });
   console.log(`Published Incus image alias ${config.INCUS_IMAGE}`);

@@ -8,8 +8,9 @@ an Incus system container, and opens a draft GitHub pull request for human
 review.
 
 This first draft uses one lightweight Incus container per run. It does not use
-Docker. The default image is a reusable `agentslave-worker` image containing
-OpenCode and ordinary developer tools, with Grok selected by default.
+Docker. The default image is a reusable `agentslave-worker-v3` image containing
+Codex, OpenCode, and ordinary developer tools. Codex is the default executor;
+OpenCode remains available as an explicitly configured fallback.
 
 ## Repository layout
 
@@ -90,19 +91,19 @@ the Nix store in `/var/lib/agentslave-secrets/agentslave.env`.
 
 ## Model access
 
-The first provider is `xai/grok-4.7` through OpenCode. OpenCode supports xAI
-device-code OAuth for qualifying SuperGrok subscriptions, so normal runs do not
-require an xAI API key. Authenticate once with the pinned OpenCode CLI, export a
-credential-only copy of its current `opencode.db` to
-`/var/lib/agentslave-secrets/opencode.db`, make it readable by the `agentslave`
-group, and set `OPENCODE_AUTH_PATH` to that file. Legacy `auth.json` stores remain
-supported for older OpenCode releases.
+The default provider is Codex using the ChatGPT authentication cache at
+`/var/lib/agentslave/.codex/auth.json`. AgentSlave copies that protected cache
+into the isolated workspace for `codex exec`, persists any token refresh back to
+the service account, and removes the container copy after the run. Set
+`AGENT_PROVIDER=opencode`, `AGENT_MODEL=xai/grok-4.7`, and
+`OPENCODE_AUTH_PATH=/var/lib/agentslave-secrets/opencode.db` to use the optional
+xAI/OpenCode fallback.
 
-OpenCode is a pinned executable inside the worker image, not vendored source or
-an orchestration dependency. AgentSlave still owns workspace creation,
+Codex and OpenCode are pinned executables inside the worker image, not vendored
+source or orchestration dependencies. AgentSlave still owns workspace creation,
 verification, Git credentials, commits, draft pull requests, audit events, and
-Slack updates. Codex app-server can be added as a second subscription-backed
-runner behind the same small `AgentRunner` boundary.
+Slack updates. The small `AgentRunner` boundary keeps a later move from
+`codex exec` to Codex app-server local to the executor implementation.
 
 The coding agent is instructed to edit and test the prepared working directory but not
 to commit, push, or open a PR. AgentSlave owns those steps through the GitHub

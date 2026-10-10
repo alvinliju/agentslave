@@ -22,6 +22,8 @@ let
     INCUS_CPU = toString cfg.incus.cpu;
     INCUS_MEMORY = cfg.incus.memory;
     INCUS_AUTO_DELETE = if cfg.incus.autoDelete then "true" else "false";
+    AGENT_PROVIDER = cfg.agent.provider;
+    CODEX_AUTH_PATH = cfg.agent.codexAuthPath;
   };
   serviceHardening = {
     User = "agentslave";
@@ -63,6 +65,22 @@ in
       default = true;
     };
 
+    agent = {
+      provider = lib.mkOption {
+        type = lib.types.enum [
+          "codex"
+          "opencode"
+        ];
+        default = "codex";
+        description = "Coding-agent executor used for new runs.";
+      };
+      codexAuthPath = lib.mkOption {
+        type = lib.types.str;
+        default = "/var/lib/agentslave/.codex/auth.json";
+        description = "Protected Codex CLI authentication cache.";
+      };
+    };
+
     database = {
       name = lib.mkOption {
         type = lib.types.str;
@@ -90,7 +108,7 @@ in
       };
       image = lib.mkOption {
         type = lib.types.str;
-        default = "agentslave-worker";
+        default = "agentslave-worker-v3";
       };
       cpu = lib.mkOption {
         type = lib.types.ints.positive;
