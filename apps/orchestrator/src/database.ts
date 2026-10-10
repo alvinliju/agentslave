@@ -42,7 +42,7 @@ export class Database {
     return this.transaction(async (client) => {
       if (intake.repository) {
         const normalized = normalizeReportText(intake.details);
-        const lockKey = `${intake.repository}\0${normalized}`;
+        const lockKey = reportLockKey(intake.repository, intake.details);
         await client.query("SELECT pg_advisory_xact_lock(hashtextextended($1, 0))", [lockKey]);
         const duplicate = await client.query(
           `SELECT * FROM jobs
@@ -366,6 +366,10 @@ export function normalizeVerificationCommands(value: unknown): string[][] {
 
 export function normalizeReportText(value: string): string {
   return value.trim().replace(/\s+/g, " ").toLowerCase();
+}
+
+export function reportLockKey(repository: string, details: string): string {
+  return JSON.stringify([repository, normalizeReportText(details)]);
 }
 
 function nullableString(value: unknown): string | null {
