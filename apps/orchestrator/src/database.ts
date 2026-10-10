@@ -35,21 +35,38 @@ export class Database {
   }
 
   async createJob(intake: Intake): Promise<Job> {
+    return this.transaction((client) => insertJob(client, intake));
+  }
+
+  async createSlackJobDeduplicated(intake: Intake): Promise<{ job: Job; created: boolean }> {
     return this.transaction(async (client) => {
-      const result = await client.query(
-        `INSERT INTO jobs
-          (title, details, repository, status, source, slack_channel, slack_thread_ts)
-         VALUES ($1, $2, $3, 'RECEIVED', $4, $5, $6)
-         RETURNING *`,
-        [intake.title, intake.details, intake.repository, intake.source,
-          intake.slackChannel ?? null, intake.slackThreadTs ?? null],
-      );
-      const job = mapJob(requireRow(result.rows));
-      await insertEvent(client, job.id, "job.received", { source: intake.source });
-      await insertAudit(client, job.id, `intake:${intake.source}`, "job.created", {
-        repository: intake.repository,
-      });
-      return job;
+      if (intake.repository) {
+        const normalized = normalizeReportText(intake.details);
+        const lockKey = `${intake.repository}\0${normalized}`;
+        await client.query("SELECT pg_advisory_xact_lock(hashtextextended($1, 0))", [lockKey]);
+        const duplicate = await client.query(
+          `SELECT * FROM jobs
+           WHERE repository = $1
+             AND lower(regexp_replace(btrim(details), '[[:space:]]+', ' ', 'g')) = $2
+             AND status IN ('RECEIVED','NEEDS_CONTEXT','READY','PREPARING','RUNNING','VERIFYING','PR_READY','MERGED')
+           ORDER BY created_at ASC
+           LIMIT 1`,
+          [intake.repository, normalized],
+        );
+        if (duplicate.rows[0]) {
+          const job = mapJob(duplicate.rows[0]);
+          await insertEvent(client, job.id, "slack.duplicate_suppressed", {
+            channel: intake.slackChannel ?? null,
+            threadTs: intake.slackThreadTs ?? null,
+          });
+          await insertAudit(client, job.id, "intake:slack", "job.duplicate_suppressed", {
+            channel: intake.slackChannel ?? null,
+            threadTs: intake.slackThreadTs ?? null,
+          });
+          return { job, created: false };
+        }
+      }
+      return { job: await insertJob(client, intake), created: true };
     });
   }
 
@@ -276,6 +293,23 @@ async function insertEvent(
   );
 }
 
+async function insertJob(client: PoolClient, intake: Intake): Promise<Job> {
+  const result = await client.query(
+    `INSERT INTO jobs
+      (title, details, repository, status, source, slack_channel, slack_thread_ts)
+     VALUES ($1, $2, $3, 'RECEIVED', $4, $5, $6)
+     RETURNING *`,
+    [intake.title, intake.details, intake.repository, intake.source,
+      intake.slackChannel ?? null, intake.slackThreadTs ?? null],
+  );
+  const job = mapJob(requireRow(result.rows));
+  await insertEvent(client, job.id, "job.received", { source: intake.source });
+  await insertAudit(client, job.id, `intake:${intake.source}`, "job.created", {
+    repository: intake.repository,
+  });
+  return job;
+}
+
 async function insertAudit(
   client: PoolClient,
   jobId: string | null,
@@ -328,6 +362,10 @@ export function normalizeVerificationCommands(value: unknown): string[][] {
   return value.filter(
     (command): command is string[] => Array.isArray(command) && command.every((part) => typeof part === "string"),
   );
+}
+
+export function normalizeReportText(value: string): string {
+  return value.trim().replace(/\s+/g, " ").toLowerCase();
 }
 
 function nullableString(value: unknown): string | null {

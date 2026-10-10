@@ -87,7 +87,7 @@ export class SlackIntake {
         return;
       }
 
-      const job = await this.database.createJob({
+      const intake = await this.database.createSlackJobDeduplicated({
         title: titleFromText(text),
         details: text,
         repository,
@@ -95,6 +95,15 @@ export class SlackIntake {
         slackChannel: mention.channel,
         slackThreadTs: threadTs,
       });
+      const job = intake.job;
+      if (!intake.created) {
+        const pullRequest = job.pullRequestUrl ? ` Draft PR: ${job.pullRequestUrl}` : "";
+        await say({
+          text: `This report is already tracked by run \`${job.id}\` (${job.status.toLowerCase()}).${pullRequest}`,
+          thread_ts: threadTs,
+        });
+        return;
+      }
       await this.storeFiles(job.id, mention.files ?? []);
       const outcome = await evaluateIntake(this.database, job);
       await say({ text: outcome.message, thread_ts: threadTs });
